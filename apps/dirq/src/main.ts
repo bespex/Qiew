@@ -14,6 +14,7 @@ import { plural } from "@qiew/frame/fragment";
 import { onRevealRequest, revealElement, revealLaunchLine, revealTextLine } from "@qiew/frame/launch";
 import { openInitial } from "@qiew/frame/reveal";
 import { closeSearch, initSearch, refreshSearch } from "@qiew/frame/search";
+import { highlightLines, languageOf, markRanges } from "@qiew/frame/highlight";
 import { initToolbar, updateToolbar } from "@qiew/frame/toolbar";
 import { type DiffLine, type FileDiff, type Hunk, type Patch, type Span, describeInfo, inlineDiff, outline, parsePatch } from "./diff";
 import { CHIPS, type Chip, type FileFilter, type Sort, visibleFiles } from "./filter";
@@ -77,8 +78,35 @@ initSearch(content);
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 const key = (f: FileDiff) => f.newPath || f.oldPath;
 
-/** Text with the changed parts marked. */
-function code(text: string, spans: Span[] | undefined): string {
+type Colours = Map<DiffLine, string> | null;
+
+/**
+ * The coloured HTML of each line of a file. The old and the new side are coloured apart (old:
+ * context and removed lines, new: context and added ones), each over all hunks of the file in
+ * a row, so a comment or string that runs across a hunk boundary keeps its colour. Null when
+ * the language is unknown or the file too big.
+ */
+function coloursOf(f: FileDiff): Colours {
+  const lang = languageOf(key(f));
+  if (!lang) return null;
+  const map = new Map<DiffLine, string>();
+  for (const side of ["-", "+"] as const) {
+    const lines = f.hunks.flatMap((h) => h.lines.filter((l) => l.type === " " || l.type === side));
+    const html = highlightLines(
+      lines.map((l) => l.text),
+      lang,
+    );
+    if (!html) return null;
+    lines.forEach((l, i) => map.set(l, html[i])); // context: the new side wins, it reads the same
+  }
+  return map;
+}
+
+/** A line's text, coloured where the language is known, with the changed words marked. */
+function code(line: DiffLine, spans: Span[] | undefined, colours: Colours): string {
+  const html = colours?.get(line);
+  if (html !== undefined) return (spans?.length ? markRanges(html, spans, "w") : html) || "​";
+  const text = line.text;
   if (!spans?.length) return esc(text) || "​";
   let out = "";
   let at = 0;
@@ -142,6 +170,7 @@ function tableOf(f: FileDiff): string {
     ? `<table class="diff unified"><colgroup><col style="width:52px"><col style="width:52px"><col></colgroup><tbody>`
     : `<table class="diff split"><colgroup><col style="width:52px"><col><col style="width:52px"><col></colgroup><tbody>`;
   let prevEnd = 1;
+  const colours = coloursOf(f);
   // Unified: a change shows all removed lines, then all added ones.
   let adds = "";
   for (const h of f.hunks) {
@@ -158,13 +187,13 @@ function tableOf(f: FileDiff): string {
         if (!r.changed) {
           html += adds;
           adds = "";
-          html += `<tr data-src="${r.new!.src}"><td class="no">${r.old!.oldNo}</td><td class="no">${r.new!.newNo}</td><td class="code sign" data-sign=" ">${code(r.new!.text, undefined)}${eol(r.new!)}</td></tr>`;
+          html += `<tr data-src="${r.new!.src}"><td class="no">${r.old!.oldNo}</td><td class="no">${r.new!.newNo}</td><td class="code sign" data-sign=" ">${code(r.new!, undefined, colours)}${eol(r.new!)}</td></tr>`;
           continue;
         }
         if (r.old)
-          html += `<tr data-src="${r.old.src}"${cls}><td class="no del">${r.old.oldNo}</td><td class="no del"></td><td class="code sign del" data-sign="−">${code(r.old.text, r.oldSpans)}${eol(r.old)}</td></tr>`;
+          html += `<tr data-src="${r.old.src}"${cls}><td class="no del">${r.old.oldNo}</td><td class="no del"></td><td class="code sign del" data-sign="−">${code(r.old, r.oldSpans, colours)}${eol(r.old)}</td></tr>`;
         if (r.new)
-          adds += `<tr data-src="${r.new.src}"${r.old ? "" : cls}><td class="no add"></td><td class="no add">${r.new.newNo}</td><td class="code sign add" data-sign="+">${code(r.new.text, r.newSpans)}${eol(r.new)}</td></tr>`;
+          adds += `<tr data-src="${r.new.src}"${r.old ? "" : cls}><td class="no add"></td><td class="no add">${r.new.newNo}</td><td class="code sign add" data-sign="+">${code(r.new, r.newSpans, colours)}${eol(r.new)}</td></tr>`;
         // Unified order is all removed, then all added; the pairing above interleaves them, which
         // reads the same for one-line changes and keeps words marked for longer blocks.
       } else {
@@ -174,9 +203,9 @@ function tableOf(f: FileDiff): string {
         html +=
           `<tr data-src="${src}"${cls}>` +
           `<td class="no${r.changed && o ? " del" : ""}">${o?.oldNo ?? ""}</td>` +
-          `<td class="code${r.changed ? (o ? " del" : " void") : ""}">${o ? code(o.text, r.oldSpans) + eol(o) : ""}</td>` +
+          `<td class="code${r.changed ? (o ? " del" : " void") : ""}">${o ? code(o, r.oldSpans, colours) + eol(o) : ""}</td>` +
           `<td class="no${r.changed && n ? " add" : ""}">${n?.newNo ?? ""}</td>` +
-          `<td class="code${r.changed ? (n ? " add" : " void") : ""}">${n ? code(n.text, r.newSpans) + eol(n) : ""}</td></tr>`;
+          `<td class="code${r.changed ? (n ? " add" : " void") : ""}">${n ? code(n, r.newSpans, colours) + eol(n) : ""}</td></tr>`;
       }
     }
   }

@@ -50,6 +50,10 @@ Requirements: Ubuntu 24.04+, Linux Mint 22+ or Debian 13+ (x86_64).
 
 - **Side by side or unified** – switch in the toolbar; the choice is kept. Changed words are marked inside
   changed lines; removed and added blocks line up row by row.
+- **Syntax colours** – code is coloured by its language (from the file name: Rust, TypeScript, Java, XML,
+  Python, Go, SQL, YAML, Dockerfile, Gradle, Protobuf, Nginx and many more), in every colour scheme and in
+  the HTML export. The old and the new side are coloured apart, so a comment that spans a hunk boundary stays
+  a comment; changed words stay marked on top. Unknown languages and very large files stay plain.
 - **A header for the patch** – subject, author, date and commit, the message, trailers (`Co-Authored-By`,
   `Reviewed-by` …) and the totals as numbers and a bar.
 - **Files at a glance** – list with status (modified, added, deleted, renamed, copied), `+`/`−` counts and the

@@ -1,4 +1,5 @@
 @import "@qiew/frame/base.css";
+@import "@qiew/frame/highlight.css";
 
 :root {
   --add: #2da44e;

@@ -1,0 +1,40 @@
+/*
+ * Colours for highlight.ts: the token classes of highlight.js on the token colours every view
+ * already defines in base.css (--x-*), so the four views stay consistent with Xaq and Hyqe.
+ */
+.hljs-comment,
+.hljs-quote,
+.hljs-doctag { color: var(--x-com); font-style: italic; }
+.hljs-keyword,
+.hljs-selector-tag,
+.hljs-literal,
+.hljs-meta .hljs-keyword { color: var(--x-pi); }
+.hljs-string,
+.hljs-regexp,
+.hljs-template-tag,
+.hljs-template-variable,
+.hljs-meta .hljs-string,
+.hljs-addition { color: var(--x-val); }
+.hljs-number,
+.hljs-symbol,
+.hljs-bullet,
+.hljs-variable.constant_,
+.hljs-link { color: var(--x-ent); }
+.hljs-title,
+.hljs-section,
+.hljs-selector-id,
+.hljs-selector-class { color: var(--x-ns); }
+.hljs-type,
+.hljs-built_in,
+.hljs-tag,
+.hljs-name { color: var(--x-tag); }
+.hljs-attr,
+.hljs-attribute,
+.hljs-property,
+.hljs-params,
+.hljs-selector-attr,
+.hljs-selector-pseudo { color: var(--x-attr); }
+.hljs-meta { color: var(--x-pi); opacity: .85; }
+.hljs-emphasis { font-style: italic; }
+.hljs-strong { font-weight: 600; }
+.hljs-deletion { color: var(--del, #d1242f); }
