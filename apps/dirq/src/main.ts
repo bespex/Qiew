@@ -14,6 +14,8 @@ import { plural } from "@qiew/frame/fragment";
 import { onRevealRequest, revealElement, revealLaunchLine, revealTextLine } from "@qiew/frame/launch";
 import { openInitial } from "@qiew/frame/reveal";
 import { closeSearch, initSearch, refreshSearch } from "@qiew/frame/search";
+import { JumpHistory } from "@qiew/frame/jumps";
+import { onKeys, setKeyHelp, toggleHelp, withKey } from "@qiew/frame/keys";
 import { highlightLines, languageOf, markRanges } from "@qiew/frame/highlight";
 import { initToolbar, updateToolbar } from "@qiew/frame/toolbar";
 import { type DiffLine, type FileDiff, type Hunk, type Patch, type Span, describeInfo, inlineDiff, outline, parsePatch } from "./diff";
@@ -70,6 +72,20 @@ let patch: Patch | null = null;
 const collapsed = new Set<string>(); // by file key
 let seen = ""; // the patch the collapsed set belongs to
 let firstShown = true;
+/** Where the view was before each jump (file, change, outline entry), for Alt+← and Alt+→. */
+const jumps = new JumpHistory<number>((a, b) => Math.abs(a - b) < 8);
+
+/** Scrolls to `top` as a jump: the place it leaves is remembered. */
+function jumpTo(top: number) {
+  jumps.record(Math.round(window.scrollY));
+  window.scrollTo({ top });
+}
+
+/** A short highlight on what a jump went to, for when it cannot reach the top of the window. */
+function flash(el: Element) {
+  el.classList.add("launch-line");
+  setTimeout(() => el.classList.remove("launch-line"), 900);
+}
 
 initSearch(content);
 
@@ -387,6 +403,7 @@ function render(keepScroll: boolean) {
   if (seen !== current.path) {
     seen = current.path;
     collapsed.clear();
+    jumps.clear();
     patch.files.forEach((f) => (isGenerated(key(f)) || lineCount(f) > BIG) && collapsed.add(key(f)));
     filter.query = "";
     filter.chips.clear();
@@ -487,9 +504,8 @@ filesEl.addEventListener("click", (e) => {
   // target cannot reach the top of the window: the flash shows which one it is.
   const hunk = a.dataset.src ? section.querySelector<HTMLElement>(`tr.hunk[data-src="${a.dataset.src}"]`) : null;
   const target = hunk ?? section.querySelector<HTMLElement>(".file-head")!;
-  window.scrollTo({ top: window.scrollY + target.getBoundingClientRect().top - (hunk ? HEAD + 4 : 41 + 4) });
-  target.classList.add("launch-line");
-  setTimeout(() => target.classList.remove("launch-line"), 900);
+  jumpTo(window.scrollY + target.getBoundingClientRect().top - (hunk ? HEAD + 4 : 41 + 4));
+  flash(target);
 });
 
 function setUnified(yes: boolean) {
@@ -522,18 +538,53 @@ function jump(dir: 1 | -1) {
   else target = [...list].reverse().find((el) => el.getBoundingClientRect().top < edge - 8);
   target ??= dir === 1 ? list[0] : list[list.length - 1]; // round the corner
   const box = target.getBoundingClientRect();
-  window.scrollTo({ top: window.scrollY + box.top - edge - (window.innerHeight - edge) / 4 });
-  target.classList.add("launch-line");
-  setTimeout(() => target!.classList.remove("launch-line"), 900);
+  jumpTo(window.scrollY + box.top - edge - (window.innerHeight - edge) / 4);
+  flash(target);
+}
+
+/** Alt+↓ / Alt+↑: the header of the next or previous file reaches the top. */
+function jumpFile(dir: 1 | -1) {
+  const edge = 41 + 4;
+  const list = [...content.querySelectorAll<HTMLElement>(".file")];
+  const target =
+    dir === 1 ? list.find((s) => s.getBoundingClientRect().top > edge + 2) : [...list].reverse().find((s) => s.getBoundingClientRect().top < edge - 2);
+  if (!target) return;
+  jumpTo(window.scrollY + target.getBoundingClientRect().top - edge);
+  flash(target.querySelector(".file-head")!);
+}
+
+function goBack(forward: boolean) {
+  const at = Math.round(window.scrollY);
+  const to = forward ? jumps.forward(at) : jumps.back(at);
+  if (to !== undefined) window.scrollTo({ top: to });
 }
 $btn("next-btn").addEventListener("click", () => jump(1));
 $btn("prev-btn").addEventListener("click", () => jump(-1));
-document.addEventListener("keydown", (e) => {
-  if (e.key === "F7") {
-    e.preventDefault();
-    jump(e.shiftKey ? -1 : 1);
-  }
+onKeys({
+  nextChange: () => jump(1),
+  prevChange: () => jump(-1),
+  nextSection: () => jumpFile(1),
+  prevSection: () => jumpFile(-1),
+  back: () => goBack(false),
+  forward: () => goBack(true),
+  toggleNav: () => {
+    if (!$btn("side-btn").hidden) $btn("side-btn").click();
+  },
+  help: toggleHelp,
 });
+setKeyHelp([
+  ["nextChange", "Next change"],
+  ["prevChange", "Previous change"],
+  ["nextSection", "Next file"],
+  ["prevSection", "Previous file"],
+  ["back", "Back to where the last jump started"],
+  ["forward", "Forward again"],
+  ["toggleNav", "Show or hide the file list"],
+  ["search", "Search"],
+]);
+$btn("next-btn").title = withKey("Next change", "nextChange");
+$btn("prev-btn").title = withKey("Previous change", "prevChange");
+$btn("side-btn").title = withKey("Files", "toggleNav");
 
 /** Which change and which file the view is at. */
 let spyFrame = 0;

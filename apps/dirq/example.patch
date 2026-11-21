@@ -179,7 +179,7 @@ diff --git a/Cargo.lock b/Cargo.lock
 index 1111111..2222222 100644
 --- a/Cargo.lock
 +++ b/Cargo.lock
-@@ -10,7 +10,7 @@
+@@ -10,6 +10,6 @@
  [[package]]
  name = "serde"
 -version = "1.0.200"

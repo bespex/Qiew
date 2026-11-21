@@ -64,7 +64,9 @@ Requirements: Ubuntu 24.04+, Linux Mint 22+ or Debian 13+ (x86_64).
   patch order, size of the change or status. The filter survives a reload of the patch file.
 - **Outline** – the function or class names in the `@@ … @@` lines appear under each file; click one to jump
   to its hunk.
-- **Navigate the changes** – F7 / Shift+F7 or the arrows jump to the next or previous change.
+- **Navigate by keyboard** – F7 / Shift+F7 (or the arrows) jump to the next or previous change, Alt+↓ / Alt+↑
+  to the next or previous file, Alt+← / Alt+→ back and forward along the jumps made (files, changes, outline
+  entries), Ctrl+Shift+O shows or hides the file list. `?` – or "Keyboard Shortcuts" in the menu – lists them.
 - **Ignore whitespace** – changes in blanks only show as unchanged.
 - **Formats** – `git diff`, `git format-patch`, IntelliJ IDEA "Create Patch", Subversion and plain `diff -u`:
   renames, mode changes, binary files, "no newline at end of file". What is not a unified diff is shown as written.
