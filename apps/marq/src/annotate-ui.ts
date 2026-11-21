@@ -332,6 +332,7 @@ export function initAnnotate(doc: HTMLElement, current: () => Shown | null, onWr
     if (allowed() !== "yes") return;
     const t = e.target as Element;
     if (t === article) return clearTimeout(hideTimer); // the margin: keep the button for the way to it
+    if (t.closest(".notes, .note-card")) return hidePlus(); // the marks have their own card
     const b = blockOf(t);
     if (b) {
       pointed = b;

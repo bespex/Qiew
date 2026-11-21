@@ -171,7 +171,10 @@ body.outline-open .outline { display: flex; }
   position: absolute;
   left: 14px;
   margin-top: 0.3em;
-  display: flex;
+  /* Inline, not block: in a tight list item the marks stand before the item's text, and WebKit
+     puts an absolute block there below the line instead of beside it. */
+  display: inline-flex;
+  vertical-align: top;
   flex-direction: column;
   gap: 3px;
   padding: 3px;
