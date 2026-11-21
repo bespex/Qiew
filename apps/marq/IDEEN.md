@@ -1,9 +1,9 @@
 # Marq: Blöcke kommentieren (Typen `@ai`, `@me`, `@you`)
 
-Stand 2026-11-21. Schritt 1 bis 3 der Reihenfolge sind gebaut: der Kern (`src/annotate.ts`, Tests in
-`src/annotate.test.ts`), die Anzeige ohne Aktionen (`src/notes.ts`, Tests in `src/notes.test.ts`; `npm test`) und
-`--annotate` mit dem sicheren Schreiben (`crates/frame/src/launch.rs`, `src-tauri/src/annotate.rs`, `src/write.ts`;
-`cargo test`). Es fehlt die Bedienung (Schritt 4): Noch ruft nichts in der Oberfläche das Schreiben auf.
+Stand 2026-11-21. Schritt 1 bis 4 der Reihenfolge sind gebaut: der Kern (`src/annotate.ts`, Tests in
+`src/annotate.test.ts`), die Anzeige (`src/notes.ts`, Tests in `src/notes.test.ts`; `npm test`), `--annotate` mit dem
+sicheren Schreiben (`crates/frame/src/launch.rs`, `src-tauri/src/annotate.rs`, `src/write.ts`; `cargo test`) und die
+Bedienung (`src/annotate-ui.ts`). Offen ist Schritt 5 (Gliederung, Liste, Suche).
 
 Das Zusammenspiel mit Dirq und CodeDeck (gleiche Gesten, Rahmenbausteine, Tasten) steht in `docs/BEDIENKONZEPT.md`.
 
@@ -230,8 +230,22 @@ eigenes `color-scheme` nach dem System setzt).
 - Z6 im Frontend (`relocateBlock`, `relocateComment`): Hat sich die Datei seit dem Rendern geändert, wird der
   Block über den Text seiner ersten Zeile, ein Kommentar über Kopf und Text wiedergefunden; nur ein eindeutiger
   Treffer zählt.
-- Noch offen für Schritt 4: den eigenen Reload erkennen (`write.ts` gibt den neuen Text zurück; das folgende
-  `file-changed` mit genau diesem Text darf Eingabekarte und Scroll nicht zurücksetzen).
+**Gebaut (Schritt 4):**
+
+- Randknopf: Beim Überfahren eines Blocks erscheint links im Rand ein „+“ (bei einem Block mit Kommentaren unter
+  deren Punkten), dazu ein dünner Strich neben dem Block, damit klar ist, wem das „+“ gilt.
+- Eingabekarte unter dem Block: Chips `@ai`, `@me`, `@you` (zuletzt gewählter vorbelegt, bis zum Beenden),
+  Strg+Enter speichert, Esc bricht ab; Fehler stehen in der Karte, der Text bleibt.
+- Notizkarte mit `--annotate`: je Kommentar Abhaken/Wieder öffnen, Bearbeiten (Typ bleibt), Löschen (erster Klick
+  fragt, zweiter löscht), unten „+ Kommentar“. Bei schreibgeschützter Datei statt der Knöpfe ein Hinweis.
+- Tasten: Strg+Alt+M öffnet die Eingabe am Block unter dem Zeiger, sonst am ersten sichtbaren; F7 / Umschalt+F7
+  springt zum nächsten / vorigen Kommentar und öffnet seine Karte (auch ohne `--annotate`).
+- Eigener Reload: Nach dem Schreiben zeigt Marq den neuen Text sofort; ein `file-changed` mit genau diesem Text wird
+  übersprungen. Eine offene Notizkarte geht am selben Block wieder auf.
+- Live-Reload während des Tippens (die KI ändert die Datei): Randknopf und Eingabekarte liegen auf einer eigenen
+  Ebene außerhalb der Seite, der Text bleibt, die Karte findet ihren Block wieder.
+- Randknopf, Eingabekarte und Notizkarte sind vorerst in Marq gebaut, nicht im Rahmen (`packages/frame`), wie es
+  `docs/BEDIENKONZEPT.md` vorsieht: Sie wandern dorthin, wenn Dirq sie bekommt und die Schnittstelle zwei Nutzer hat.
 
 Tasten und Gesten (Randknopf, Eingabekarte, F7 usw.) kommen aus dem Rahmen und stehen in `docs/BEDIENKONZEPT.md`.
 
@@ -279,6 +293,12 @@ Nichts mehr vor Schritt 1 der Reihenfolge.
 
 Marq liefert nur Datei, Format und Startparameter. Alles Folgende ist Sache von CodeDeck (oder der KI-Anleitung) und
 verlangt von Marq nichts außer den Teilen oben. Zum Entscheiden, nicht zum Bauen in Marq.
+
+**Gebaut in CodeDeck (2026-11-21, `docs/QIEW.md` dort):** CodeDeck startet Marq für Projektdateien mit `--annotate`.
+Die `@ai`-Kommentare sind dort gewöhnliche Hinweise (Regel D18, `markers.rs`), jetzt auch in Listeneinträgen und
+Zitaten und mehrzeilig. Sie gehen nur mit, wenn der Nutzer sie per Büroklammer anhängt (damit ist die Prompt-Injection
+unten erledigt). **Entschieden:** Die KI **löscht** einen erledigten Kommentar, sie hakt nicht ab; Abhaken bleibt
+ein Handgriff des Nutzers in Marq. Abgehakte Kommentare zählen in CodeDeck nicht als Hinweis.
 
 - **Start:** CodeDeck startet Marq mit `--annotate` (zusammen mit `--reuse`, wenn es das Fenster wiederverwendet).
   Wie es das pro Dokument entscheidet, ist seine Sache; Marq beachtet den Parameter je Aufruf.

@@ -76,7 +76,9 @@ Requirements: Ubuntu 24.04+, Linux Mint 22+ or Debian 13+ (x86_64).
   choice is kept.
 - **Comments on blocks** – `<!-- @ai: … -->`, `<!-- @me: … -->` and `<!-- @you: … -->` before a block are
   instructions for an AI, notes to yourself and notes for others. Marq shows them as small marks in the margin,
-  in the colour of their type; pointing at a mark shows its text.
+  in the colour of their type; pointing at a mark shows its text, F7 jumps to the next one. Started with
+  `--annotate`, a "+" in the margin of a block (or Ctrl+Alt+M) adds one, and the card ticks, changes and
+  deletes them.
 - **Read-only** – the files shown are only read, never written. The one exception is a file opened with
   `--annotate`: Marq may then write comments into it, and changes nothing but comment lines. Besides, Marq
   writes an export to a file you choose, and the AppImage replaces itself when you accept an update.

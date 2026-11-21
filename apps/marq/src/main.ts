@@ -16,7 +16,9 @@ import { effectiveView } from "@qiew/frame/views";
 import { initWide, layoutWide } from "./wide";
 import { initOutline, updateOutline } from "./outline";
 import { initToolbar, setBackEnabled, updateToolbar } from "./toolbar";
-import { initNotes, installNotes, resetNotes } from "./notes";
+import { initNotes, installNotes, resetNotes, restoreNotes } from "./notes";
+import { afterRender, initAnnotate } from "./annotate-ui";
+import { relocateBlock } from "./annotate";
 
 setApp("marq");
 initToolbar();
@@ -73,6 +75,8 @@ md.renderer.rules.fence = (tokens, idx, options, env, self) => {
 const empty = document.getElementById("empty")!;
 const article = document.getElementById("doc")!;
 let current: Doc | null = null;
+/** The text the page was rendered from last. */
+let rendered = "";
 /** The local images of the document shown: the file and the address as written. */
 const localImages = new Map<HTMLImageElement, { file: string; src: string }>();
 
@@ -80,6 +84,12 @@ initSearch(article);
 initOutline();
 initWide(article);
 initNotes(article);
+// Commenting (with --annotate): what was written is shown at once, without waiting for the reload.
+initAnnotate(article, () => current, (content) => {
+  if (!current) return;
+  current = { ...current, content };
+  render(current, true);
+});
 
 function joinPath(dir: string, rel: string): string {
   const sep = dir.includes("\\") && !dir.includes("/") ? "\\" : "/";
@@ -132,6 +142,10 @@ function render(doc: Doc, keepScroll: boolean) {
   window.scrollTo(0, scroll);
   refreshSearch();
   layoutWide();
+  const before = rendered;
+  rendered = doc.content;
+  afterRender();
+  restoreNotes((block) => relocateBlock(before, doc.content, block));
   drawDiagrams();
 }
 
@@ -344,6 +358,8 @@ getCurrentWebview().onDragDropEvent((event) => {
 
 listen<Doc>("file-changed", ({ payload }) => {
   if (current && payload.path === current.path) {
+    // Our own writing was shown already: the reload it causes brings nothing new.
+    if (payload.content === current.content && payload.annotate === current.annotate && payload.writable === current.writable) return;
     current = payload;
     render(payload, true);
   }

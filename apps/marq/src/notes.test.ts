@@ -11,18 +11,25 @@ const plain = new MarkdownIt({ html: true });
 const md = new MarkdownIt({ html: true });
 installNotes(md);
 
+const unescape = (s: string) => s.replace(/&quot;/g, '"').replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&");
 const groups = (html: string) =>
-  [...html.matchAll(/<button type="button" class="notes( orphan)?" aria-label="([^"]*)" data-notes="([^"]*)">/g)].map((m) => ({
-    orphan: !!m[1],
-    label: m[2],
-    notes: JSON.parse(m[3].replace(/&quot;/g, '"').replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&")),
-  }));
+  [...html.matchAll(/<button type="button" class="notes( orphan)?"([^>]*)>/g)].map((m) => {
+    const attr = (name: string) => new RegExp(` ${name}="([^"]*)"`).exec(m[2])?.[1];
+    return {
+      orphan: !!m[1],
+      label: attr("aria-label"),
+      target: attr("data-target") ?? null,
+      notes: JSON.parse(unescape(attr("data-notes")!)),
+    };
+  });
 
 describe("marks", () => {
   it("groups the comments before a block, in the order of the file", () => {
     const g = groups(md.render(read("existing.md")));
     expect(g.map((x) => x.notes.map((n: { type: string }) => n.type))).toEqual([["ai"], ["me", "you"], ["ai"], ["ai"], ["ai"], ["me"]]);
-    expect(g[1].notes[0]).toEqual({ type: "me", status: "erledigt", text: "Quelle prüfen" });
+    expect(g[1].notes[0]).toEqual({ type: "me", status: "erledigt", text: "Quelle prüfen", line: 6 });
+    expect(g[1].target).toBe("9:paragraph_open");
+    expect(g[5].target).toBeNull();
     expect(g[1].label).toBe("2 Kommentare, 1 offen");
     expect(g[5].orphan).toBe(true);
     expect(g.slice(0, 5).every((x) => !x.orphan)).toBe(true);

@@ -229,3 +229,113 @@ body.outline-open .outline { display: flex; }
 }
 .note-text { white-space: pre-wrap; overflow-wrap: anywhere; }
 .note-orphan { padding: 2px 12px 6px; color: var(--muted); font-size: 12px; }
+.note-head .note-tools { margin-left: auto; display: flex; gap: 2px; opacity: 0; transition: opacity 0.12s; }
+.note:hover .note-tools,
+.note-tools:focus-within,
+.note-card .note-tools button.confirm { opacity: 1; }
+.note-card button {
+  font: inherit;
+  color: var(--muted);
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  cursor: pointer;
+}
+.note-tools button { display: flex; padding: 2px; }
+.note-tools svg {
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.note-card button:hover,
+.note-card button:focus-visible { color: var(--fg); background: var(--surface); }
+/* The first click on delete asks. */
+.note-card .note-tools button.confirm { color: #fff; background: #cf222e; }
+.note-foot { padding: 4px 8px 0; border-top: 1px solid var(--border-soft); margin-top: 4px; }
+.note-foot button { padding: 2px 6px; font-size: 12px; }
+.note-hint { color: var(--muted); font-size: 12px; padding: 6px 12px 0; }
+.note-error, .input-error { color: #cf222e; font-size: 12px; padding: 4px 12px 0; white-space: pre-wrap; }
+
+/* ---------------------------------------------------------------------------
+   Commenting (with --annotate): the "+" in the margin and the input card.
+   They sit on a layer of their own above the page, placed in page
+   coordinates, so a live reload of the page keeps them.
+   --------------------------------------------------------------------------- */
+.annotate-layer { position: absolute; top: 0; left: 0; width: 0; height: 0; z-index: 6; }
+.margin-add {
+  position: absolute;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  font: 600 15px/16px var(--sans);
+  color: var(--muted);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  cursor: pointer;
+}
+.margin-add:hover,
+.margin-add:focus-visible { color: var(--accent); border-color: var(--accent); }
+
+.input-card {
+  position: absolute;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  font: 13px/1.45 var(--sans);
+  color: var(--fg);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--note, var(--accent));
+  border-radius: 8px;
+  box-shadow: 0 6px 20px rgb(0 0 0 / 18%);
+}
+.input-card.busy { opacity: 0.6; pointer-events: none; }
+.input-chips { display: flex; gap: 4px; margin-bottom: 6px; }
+.input-card .chip {
+  padding: 1px 8px;
+  font: 600 12px var(--mono);
+  color: var(--note);
+  background: none;
+  border: 1px solid color-mix(in srgb, var(--note) 45%, transparent);
+  border-radius: 10px;
+  cursor: pointer;
+}
+.input-card .chip[aria-checked="true"] { color: var(--bg); background: var(--note); border-color: var(--note); }
+.input-card .chip:disabled { display: none; }
+.input-card textarea {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 4.5em;
+  resize: vertical;
+  padding: 6px 8px;
+  font: 13px/1.45 var(--sans);
+  color: var(--fg);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.input-card textarea:focus { outline: 2px solid var(--note, var(--accent)); outline-offset: -1px; }
+.input-actions { display: flex; align-items: center; gap: 6px; margin-top: 6px; }
+.input-keys { margin-right: auto; color: var(--muted); font-size: 12px; }
+.input-actions button {
+  padding: 3px 10px;
+  font: inherit;
+  color: var(--fg);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+}
+.input-actions button.primary { color: var(--bg); background: var(--accent); border-color: var(--accent); }
+.margin-bar {
+  position: absolute;
+  width: 2px;
+  border-radius: 1px;
+  background: color-mix(in srgb, var(--accent) 45%, transparent);
+  pointer-events: none;
+}
