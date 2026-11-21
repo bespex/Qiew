@@ -884,7 +884,7 @@ dependencies = [
 
 [[package]]
 name = "dirq"
-version = "0.2.1"
+version = "0.3.0"
 dependencies = [
  "qiew-frame",
  "serde_json",
