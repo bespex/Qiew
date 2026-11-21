@@ -1,6 +1,6 @@
 [package]
 name = "xaq"
-version = "0.6.0"
+version = "0.6.1"
 description = "XML viewer with XSLT mapping, read-only – by be-spex"
 authors.workspace = true
 edition.workspace = true
