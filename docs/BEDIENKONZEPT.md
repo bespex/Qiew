@@ -1,0 +1,151 @@
+# Qiew: ein Bedienkonzept für Kommentare, Navigation und Zusammenarbeit mit CodeDeck
+
+Stand 2026-11-21. Entwurf zur Abstimmung, nichts ist gebaut. Entstanden aus den Ideen für Marq
+(`apps/marq/IDEEN.md`) und Dirq (`apps/dirq/IDEEN.md`) und den Entscheidungen des Nutzers dazu. Hier steht, was für
+**alle** Betrachter gelten soll, damit Marq und Dirq sich wie ein Programm anfühlen. Die Einzelheiten der Apps stehen
+in deren `IDEEN.md`; die Prioritäten in `apps/dirq/IDEEN.md`, Abschnitt „Abstimmung vom 2026-11-21“.
+
+## 1. Leitgedanken
+
+1. **Ein Betrachter bleibt ein Betrachter.** Ohne Parameter kann jede App nur, was sie heute kann; Marq zeigt dazu
+   vorhandene Kommentare dezent an (nur ansehen). Alles Neue, das schreibt oder sendet, ist **freigegeben**, nicht
+   eingestellt.
+2. **Freigaben sind Wörter am Start, gesetzt von CodeDeck.** Es gibt drei, mehr nicht:
+
+   | Freigabe | Wer setzt sie | Was sie einschaltet |
+   |---|---|---|
+   | `--annotate` | CodeDeck | Kommentieren (Marq: in die Datei schreiben; Dirq: an CodeDeck senden) |
+   | `CODEDECK_SOCKET=<pfad>` (Umgebung) | CodeDeck | der Rückweg: Knöpfe und Nachrichten für CodeDeck |
+   | `--repo <pfad>` | CodeDeck | Dirq darf lesend im Repository nachsehen (Kontext, `.gitattributes`) |
+
+   Eine Freigabe gilt **je Aufruf und je Dokument**, nicht je Programm: Wechselt `--reuse` das Dokument, gilt, was der
+   neue Aufruf mitbringt. Es gibt keine Einstellung im Programm, die eine Freigabe dauerhaft erteilt.
+3. **Zustand wohnt am Ort, nicht im Dialog.** Ein Kommentar, eine Änderung, ein „neu“ ist dort zu sehen, wo es sich
+   befindet (Randstreifen, Blase, Aufblitzen), nicht in einem Fenster, das man öffnen muss.
+4. **Ein Vokabular der Gesten.** Dieselbe Geste heißt in jeder App dasselbe (Abschnitt 3).
+5. **Die Maus genügt, die Tastatur auch.** Nichts ist nur per Taste erreichbar, nichts nur per Maus.
+6. **Weglassen ist ein Entwurfsmittel.** Was keine Freigabe hat, hinterlässt keine leere Stelle: kein ausgegrauter Knopf,
+   kein freier Rand. Das Layout einer nicht freigegebenen App bleibt wie heute.
+
+## 2. Bausteine im gemeinsamen Rahmen (`packages/frame`)
+
+Jeder Baustein wird einmal im Rahmen gebaut; die Apps liefern nur *wo* (Ankerpunkte) und *was geschieht* (Rückruf).
+
+| Baustein | Aussehen | Wer nutzt ihn |
+|---|---|---|
+| **Randknopf** | Beim Überfahren einer Zeile (Dirq) oder eines Blocks (Marq) erscheint links im Rand ein kleines „+“. Klick öffnet die Eingabe. Nur mit `--annotate`. | Marq, Dirq |
+| **Eingabekarte** | Kleines Feld direkt unter der Stelle. Strg+Enter speichert/sendet, Esc bricht ab. Mehrzeilig. In Marq wählt ein Chip vorn den **Typ** (`@ai`, `@me`, `@you`; zuletzt gewählter vorbelegt); in Dirq gibt es keinen Chip. | Marq, Dirq |
+| **Notizkarte** | Kommentierte Stelle: farbiger Streifen am Rand, kleine Blase mit Text, ein Klick klappt auf/zu; beim Überfahren Stift und Papierkorb, in Marq zusätzlich ein Haken (Abhaken, `@typ#erledigt`). Ohne `--annotate` zeigt Marq die Blase dezent und ohne diese Knöpfe. | Marq, Dirq |
+| **Navigationsfeld links** | Das Gliederungsfeld, das Marq schon hat (`outline.ts`, Strg+Umschalt+O, anheftbar), wird allgemein: in Marq „Gliederung“, in Dirq „Dateien“. Darin je Eintrag Zähler (Kommentare, Änderungen). Unten der Abschnitt „Kommentare“: in Dirq nur mit `--annotate`, in Marq immer (ohne den Parameter nur zum Springen und Ansehen). | Marq, Dirq |
+| **Randleiste** | Dünner Streifen rechts am Scrollbalken wie die Übersicht in IDEs: farbige Marken für Änderungen, Kommentare, „neu seit eben“. Klick springt. | Dirq zuerst, Marq (Kommentare) |
+| **Aufblitzen** | Nach einem Live-Reload leuchten Blöcke, die neu oder geändert sind, kurz auf und tragen eine Weile eine zarte Marke. Das ist ein kleines Interdiff, das ohne Konzept auskommt. | Dirq (Hunks), Marq (Blöcke) |
+| **Sprungverlauf** | Alt+←/→ wie in Marq heute; wird in Dirq für Sprünge (Datei, „verschoben nach …“, Kommentar) übernommen. | Marq, Dirq |
+| **Hilfe** | `?` zeigt die Tastenübersicht als Karte über der Seite; jeder Tooltip nennt seine Taste. | alle |
+
+**Warum diese Bausteine elegant sind:** Es gibt *eine* Stelle für Aktionen (den Rand), *eine* für Orientierung (links)
+und *eine* für Überblick (rechts). Die Werkzeugleiste bleibt, wie sie ist (README: „eine Werkzeugleiste für alle“); mit
+`--annotate` kommt höchstens ein einziger Knopf dazu: die Blase mit der Zahl der Kommentare, ein Klick öffnet den
+Abschnitt „Kommentare“ im Feld links. Alles Weitere erscheint nur dort, wo man hinschaut.
+
+## 3. Tasten
+
+Zwei Regeln: **Vertrautes übernehmen** (was Qiew und IDEs schon sagen) und **keine Einzelbuchstaben**, weil man dort
+Tippen vermutet und sie sich schlecht merken lassen. Das ersetzt die Buchstaben-Belegung (J/K/N/P/U/V/C/O), die als nicht
+intuitiv bewertet wurde.
+
+| Taste | Dirq | Marq | Herkunft |
+|---|---|---|---|
+| **F7 / Umschalt+F7** | nächste/vorige Änderung | nächster/voriger Kommentar (auch ohne `--annotate`) | gibt es in Dirq heute; IntelliJ |
+| **Alt+↓ / Alt+↑** | nächste/vorige Datei | nächste/vorige Überschrift | „Abschnitt weiter“ in beiden Apps gleich |
+| **Alt+← / Alt+→** | zurück/vor im Sprungverlauf | zurück/vor (gibt es) | Browser |
+| **Strg+Umschalt+O** | Dateien ein/aus | Gliederung ein/aus (gibt es) | Marq heute |
+| **Strg+Alt+M** | Kommentar an der Stelle unter dem Zeiger, sonst an der zuletzt angesprungenen | dasselbe | „Kommentar einfügen“ in Word und Docs |
+| **Strg+Enter / Esc** | senden / abbrechen | speichern / abbrechen | Strg+Enter heißt in Xaq und Jayq schon „ausführen“ |
+| **Strg+F, F3** | Suche | Suche | gibt es |
+| **?** | Hilfe | Hilfe | |
+
+**Offen zur Abstimmung:** Alt+↑/↓ für Abschnitte könnte mit Fenstermanagern kollidieren (unter Linux selten, aber
+möglich); Alternative Strg+↓/↑. Strg+Alt+M fühlt sich für Linux-Nutzer ungewohnt an, die Alternative wäre Strg+Umschalt+M.
+Beide Vorschläge sind austauschbar, solange es eine Stelle im Rahmen gibt, an der die Belegung steht.
+
+## 4. Kommentieren als Ganzes
+
+Eine Geste, zwei Wege, ein Ziel: Der Hinweis soll die KI erreichen, ohne dass der Betrachter selbst zum Editor oder zum
+Chat wird.
+
+| | **Marq** | **Dirq** |
+|---|---|---|
+| Medium | Die Markdown-Datei selbst: `<!-- @typ: … -->` vor dem Block (`@typ` = `@ai`, `@me` oder `@you`; Status `@typ#erledigt`) | ein Patch, den niemand pflegt: es gibt nichts, wohin man schreiben könnte |
+| Wer speichert | Marq (in die Datei, nur mit `--annotate`) | CodeDeck (wie die Zeilenkommentare im Reiter Änderungen) |
+| Wie kommt es zur KI | Die KI liest die Datei; Regel in `CLAUDE.md` | CodeDeck hängt es an den nächsten Prompt (Teil `notes`, `src/notes.ts`: Datei, Zeile, Zeilentext, Text) |
+| Anker | der Kommentar steht am Block | Datei + neue Zeilennummer + Text der Zeile; Dirq findet die Zeile über den Text wieder |
+| Löschen | Zeilen des Kommentars aus der Datei entfernen (der Nutzer wählt; Marq löscht nie von selbst) | Nachricht `line_comment_remove` mit der `id` an CodeDeck |
+| Abhaken | Kopf ändern: `@typ:` ⇄ `@typ#erledigt:`, Kommentar bleibt stehen | – (gibt es in Dirq nicht) |
+| Ohne Rückweg | – (Datei genügt) | Kommentare bleiben im Fenster; „Als Liste kopieren“ (Markdown) |
+| Was der Nutzer sieht | Randstreifen, Blase, Eingabekarte | **dasselbe** |
+
+So wirken Marq und Dirq gleich, obwohl dahinter zwei Mechanismen stehen. Der Nutzer muss nicht wissen, wohin ein
+Kommentar geht; er weiß, **dass** er an der Stelle hängt.
+
+**In Dirq entfällt der Typ.** Jeder Zeilenkommentar von CodeDeck ist ohnehin für die KI. In Marq ist der Typ nötig,
+weil Kommentare in einer Datei auch für Menschen sein können: `@ai` für die KI, `@me` für den Schreiber selbst,
+`@you` für eine andere Person. Der Typ wird im Eingabefeld per Chip gewählt und bestimmt die Farbe der Blase.
+
+### Dirq im Einzelnen
+
+- **Nachricht an CodeDeck** (Rückweg, eine Zeile JSON):
+
+  ```json
+  {"action":"line_comment","source":"dirq","id":"d4f1","file":"src/limit.rs","line":42,"code":"let burst = cfg.burst;","text":"Was, wenn 0?"}
+  {"action":"line_comment_remove","source":"dirq","id":"d4f1"}
+  ```
+
+  Die `id` vergibt Dirq. CodeDeck braucht deshalb keine Antwort (Entscheidung: kein Rückkanal von CodeDeck zu Dirq,
+  vorerst).
+- **Seite des Diffs:** Kommentierbar sind Zeilen der neuen Seite (Kontext und Hinzugefügtes). Für eine **gelöschte**
+  Zeile ist nur die alte Seite sinnvoll; CodeDeck kennt heute nur die neue Seite. Vorschlag: Das Feld `side: "old"` ist
+  optional, fehlt es, gilt „neu“; CodeDeck zeigt der KI dann `(gelöschte Zeile) …`. **Mit CodeDeck abzustimmen.**
+- **Wiederfinden beim Live-Reload:** Die Karten im Fenster hängen an Datei + Zeilentext, nicht an der Zeilennummer. Ändert
+  die laufende Runde den Patch (B4), bleiben sie an ihrer Zeile; findet sich der Text nicht mehr, wird die Karte
+  gedämpft mit „Zeile geändert“ angezeigt, nicht gelöscht.
+- **Neue Runde in einem frischen Patch:** Dirq kennt die alten Kommentare nicht mehr (kein Rückkanal). Sie liegen weiter
+  bei CodeDeck, im Reiter Änderungen und im nächsten Prompt. Soll Dirq sie wiedersehen, wäre das ein kleiner, späterer
+  Kopf im Patch (`X-CodeDeck-Note: <datei>:<zeile> <text>`, wie für „gesehen“ erwogen); nicht jetzt.
+
+### Marq im Einzelnen
+
+Siehe `apps/marq/IDEEN.md` (Typen, Status, Format, Einfügestelle je Blockart, Zusicherungen, sicheres Schreiben).
+Neu aus dem Gesamtbild:
+Eingabekarte, Notizkarte und Randknopf kommen aus dem Rahmen und sind **dieselben** wie in Dirq; F7 springt in Marq zum
+nächsten Kommentar; Aufblitzen zeigt nach einem Live-Reload, welche Blöcke die KI gerade geändert hat.
+
+## 5. Zusammenarbeit mit CodeDeck: Grundsätze
+
+- **Der Rückweg ist generell da** (im Rahmen: `crates/frame`, `packages/frame`), wird aber **nur dort genutzt, wo er
+  freigegeben und sinnvoll ist.** Das heißt jetzt: Zeilenkommentare aus Dirq. „Gesehen“, „Hunk anhängen“, „Hunk
+  zurücknehmen“ und „in Editor öffnen“ werden nicht gebaut, bis sie gebraucht werden.
+- **Nachrichten laufen in eine Richtung** (Betrachter → CodeDeck). CodeDeck gibt über Startparameter und den Kopf des
+  Patches Informationen mit, und über `--reuse` neue Inhalte, aber nichts kommt als Antwort zurück.
+- **CodeDeck muss keine neuen Formate verstehen:** für Marq genügt die Suche nach `<!-- @`; für Dirq ist
+  `line_comment` das Format, das CodeDeck als `Note` schon kennt.
+- **Was CodeDeck für die Freigaben tun muss** (Liste für `apps.rs`): `--annotate` für Marq (Markdown-Dateien des
+  Projekts) und Dirq setzen; `CODEDECK_SOCKET` für Dirq; `--repo` für Dirq; eine Zeile in `CLAUDE.md` für `@ai`-
+  Kommentare; ein Schalter „Live in Dirq“ an einer laufenden Runde (B4).
+
+## 6. Entschieden und offen
+
+**Entschieden (2026-11-21):**
+
+- Marq zeigt vorhandene Kommentare auch **ohne** `--annotate` dezent an, ohne Aktionen (kein „+“, Bearbeiten,
+  Abhaken, Löschen).
+- Der Parameter heißt `--annotate`, in Marq und Dirq.
+- Marq löscht oder hakt nie von selbst ab; beides wählt der Nutzer. Ob die KI löscht oder abhakt, legt CodeDeck in
+  seiner Anleitung fest.
+
+**Offen:**
+
+1. Tastenbelegung (Abschnitt 3) bestätigen oder ändern.
+2. Alt+↑/↓ oder Strg+↑/↓ für „nächster Abschnitt“?
+3. Gelöschte Zeilen in Dirq kommentierbar machen (`side: "old"`), mit CodeDeck abstimmen?
+4. Reicht für Dirq der Randknopf an *Zeilen*, oder soll man auch einen **Bereich** aufziehen können (mehrere Zeilen,
+   mit der Maus über die Zeilennummern)? Bei CodeDeck sind es einzelne Zeilen.
