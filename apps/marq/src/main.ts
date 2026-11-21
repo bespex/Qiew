@@ -16,6 +16,7 @@ import { effectiveView } from "@qiew/frame/views";
 import { initWide, layoutWide } from "./wide";
 import { initOutline, updateOutline } from "./outline";
 import { initToolbar, setBackEnabled, updateToolbar } from "./toolbar";
+import { initNotes, installNotes, resetNotes } from "./notes";
 
 setApp("marq");
 initToolbar();
@@ -51,6 +52,9 @@ md.core.ruler.push("source_lines", (state) => {
   }
 });
 
+// Comments in the file (<!-- @ai: … -->) become marks in the margin.
+installNotes(md);
+
 // ```mermaid blocks become diagrams. Rendering leaves a placeholder that holds the source (shown
 // until the diagram is drawn, and when it cannot be); drawDiagrams() draws them afterwards, because
 // Mermaid draws asynchronously and is loaded only for documents that have diagrams.
@@ -71,6 +75,7 @@ const localImages = new Map<HTMLImageElement, { file: string; src: string }>();
 initSearch(article);
 initOutline();
 initWide(article);
+initNotes(article);
 
 function joinPath(dir: string, rel: string): string {
   const sep = dir.includes("\\") && !dir.includes("/") ? "\\" : "/";
@@ -86,6 +91,7 @@ function render(doc: Doc, keepScroll: boolean) {
   const scroll = keepScroll ? window.scrollY : 0;
   // A live reload keeps the drawings that worked, to show them while a diagram has an error.
   if (!keepScroll) lastGood = [];
+  resetNotes();
   article.innerHTML = DOMPurify.sanitize(md.render(doc.content));
   localImages.clear();
 
@@ -191,8 +197,8 @@ function exportContent(): string {
     img.setAttribute("src", `qiew-embed:${images.length}`);
     images.push(local);
   });
-  // The diagrams' buttons belong to the window, not to the page.
-  copy.querySelectorAll(".mermaid-open").forEach((btn) => btn.remove());
+  // The diagrams' buttons and the comments' marks belong to the window, not to the page.
+  copy.querySelectorAll(".mermaid-open, .notes, .note-card").forEach((el) => el.remove());
   // A <source> for another image of the same picture would point into the app; the <img> stands for it.
   copy.querySelectorAll("source[srcset]").forEach((source) => {
     if (!/^(https?:|data:)/i.test(source.getAttribute("srcset")!.trim())) source.remove();
