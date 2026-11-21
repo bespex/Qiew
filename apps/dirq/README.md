@@ -54,6 +54,12 @@ Requirements: Ubuntu 24.04+, Linux Mint 22+ or Debian 13+ (x86_64).
   `Reviewed-by` …) and the totals as numbers and a bar.
 - **Files at a glance** – list with status (modified, added, deleted, renamed, copied), `+`/`−` counts and the
   common folder cut off; click to jump. Files fold; very long ones start folded.
+- **Generated files fold themselves** – lock files, minified bundles, snapshots, source maps and `dist/` start
+  folded with a line such as “generated · 1,240 lines · Show”; they still count in the totals.
+- **Filter and sort the file list** – type to filter by path, toggle new / changed / deleted / renamed, sort by
+  patch order, size of the change or status. The filter survives a reload of the patch file.
+- **Outline** – the function or class names in the `@@ … @@` lines appear under each file; click one to jump
+  to its hunk.
 - **Navigate the changes** – F7 / Shift+F7 or the arrows jump to the next or previous change.
 - **Ignore whitespace** – changes in blanks only show as unchanged.
 - **Formats** – `git diff`, `git format-patch`, IntelliJ IDEA "Create Patch", Subversion and plain `diff -u`:

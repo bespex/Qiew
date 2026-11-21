@@ -175,6 +175,18 @@ index 0000000..85a14e1
 +export function formatMoney(amount: number, currency: string): string {
 +  return new Intl.NumberFormat("de-DE", { style: "currency", currency }).format(amount);
 +}
+diff --git a/Cargo.lock b/Cargo.lock
+index 1111111..2222222 100644
+--- a/Cargo.lock
++++ b/Cargo.lock
+@@ -10,7 +10,7 @@
+ [[package]]
+ name = "serde"
+-version = "1.0.200"
++version = "1.0.203"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ 
+ [[package]]
 -- 
 2.43.0
 

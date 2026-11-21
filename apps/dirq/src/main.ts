@@ -15,7 +15,9 @@ import { onRevealRequest, revealElement, revealLaunchLine, revealTextLine } from
 import { openInitial } from "@qiew/frame/reveal";
 import { closeSearch, initSearch, refreshSearch } from "@qiew/frame/search";
 import { initToolbar, updateToolbar } from "@qiew/frame/toolbar";
-import { type DiffLine, type FileDiff, type Hunk, type Patch, type Span, describeInfo, inlineDiff, parsePatch } from "./diff";
+import { type DiffLine, type FileDiff, type Hunk, type Patch, type Span, describeInfo, inlineDiff, outline, parsePatch } from "./diff";
+import { CHIPS, type Chip, type FileFilter, type Sort, visibleFiles } from "./filter";
+import { isGenerated } from "./generated";
 
 setApp("dirq");
 initToolbar();
@@ -54,6 +56,13 @@ const save = (key: string, value: string) => {
 let unified = store("mode", "split") === "unified";
 let ignoreWs = store("ws", "0") === "1";
 let sideOpen = store("side", "1") === "1";
+
+const SORTS: Sort[] = ["folder", "size", "status"];
+const filter: FileFilter & { chips: Set<Chip> } = {
+  query: "",
+  chips: new Set(),
+  sort: SORTS.find((s) => s === store("sort", "folder")) ?? "folder",
+};
 
 let current: Doc | null = null;
 let patch: Patch | null = null;
@@ -191,6 +200,14 @@ function fileBody(f: FileDiff): string {
   return tableOf(f);
 }
 
+const lineCount = (f: FileDiff) => f.hunks.reduce((n, h) => n + h.lines.length, 0);
+
+/** A folded generated or very long file says why, and opens on a click. */
+function foldedBody(f: FileDiff): string {
+  const kind = isGenerated(key(f)) ? "generated" : lineCount(f) > BIG ? "long" : "";
+  return kind && !f.binary && f.hunks.length ? `<div class="note hint">${kind} · ${plural(lineCount(f), "line")} · <u>Show</u></div>` : "";
+}
+
 function fileHtml(f: FileDiff, index: number, forceOpen = false): string {
   const isCollapsed = !forceOpen && collapsed.has(key(f));
   const where =
@@ -209,7 +226,7 @@ function fileHtml(f: FileDiff, index: number, forceOpen = false): string {
     `<header class="file-head"><span class="tw">▼</span><span class="st st-${f.status}">${STATUS[f.status]}</span>` +
     `<span class="path">${where}</span><span class="info">${esc(infos.join(" · "))}</span><span class="grow"></span>` +
     `<span class="cnt"><span class="a">+${f.added}</span> <span class="d">−${f.deleted}</span></span></header>` +
-    `<div class="file-body">${isCollapsed ? "" : fileBody(f)}</div></section>`
+    `<div class="file-body">${isCollapsed ? foldedBody(f) : fileBody(f)}</div></section>`
   );
 }
 
@@ -264,15 +281,66 @@ function commonDir(paths: string[]): string {
 
 function listHtml(p: Patch): string {
   const strip = commonDir(p.files.map(key));
-  return p.files
-    .map(
-      (f, i) =>
-        `<a data-i="${i}"><span class="st st-${f.status}">${STATUS[f.status]}</span>` +
+  const shown = visibleFiles(p.files, filter);
+  const rows = shown
+    .map((i) => {
+      const f = p.files[i];
+      const sections = outline(f)
+        .map((o) => `<a class="sec" data-i="${i}" data-src="${o.hunk.src}" title="${esc(o.section)}"><span class="nm"><bdi>${esc(o.section)}</bdi></span></a>`)
+        .join("");
+      return (
+        `<a class="f" data-i="${i}"><span class="st st-${f.status}">${STATUS[f.status]}</span>` +
         `<span class="nm"><bdi>${pathHtml(key(f), strip)}</bdi></span>` +
-        `<span class="cnt"><span class="a">+${f.added}</span> <span class="d">−${f.deleted}</span></span></a>`,
-    )
+        `<span class="cnt"><span class="a">+${f.added}</span> <span class="d">−${f.deleted}</span></span></a>${sections}`
+      );
+    })
     .join("");
+  return rows || `<div class="none">No file matches.</div>`;
 }
+
+/** The filter above the list is built once, so typing survives a reload of the patch. */
+const listEl = document.createElement("div");
+listEl.className = "fl-list";
+const barEl = document.createElement("div");
+barEl.className = "fl-bar";
+barEl.innerHTML =
+  `<input type="search" class="fl-q" placeholder="Filter files" aria-label="Filter files" spellcheck="false" autocomplete="off">` +
+  `<div class="fl-chips">${CHIPS.map((c) => `<button type="button" class="chip" data-chip="${c.id}" aria-pressed="false">${c.label}</button>`).join("")}</div>` +
+  `<label class="fl-sort">Sort <select aria-label="Sort files"><option value="folder">patch order</option><option value="size">size of change</option><option value="status">status</option></select></label>` +
+  `<div class="fl-count"></div>`;
+filesEl.append(barEl, listEl);
+const queryEl = barEl.querySelector<HTMLInputElement>(".fl-q")!;
+const sortEl = barEl.querySelector<HTMLSelectElement>("select")!;
+sortEl.value = filter.sort;
+
+function showList() {
+  if (!patch) {
+    listEl.innerHTML = "";
+    return;
+  }
+  listEl.innerHTML = listHtml(patch);
+  barEl.querySelectorAll<HTMLElement>(".chip").forEach((b) => b.setAttribute("aria-pressed", String(filter.chips.has(b.dataset.chip as Chip))));
+  const n = visibleFiles(patch.files, filter).length;
+  barEl.querySelector(".fl-count")!.textContent = n < patch.files.length ? `${n} of ${plural(patch.files.length, "file")}` : "";
+  spy();
+}
+
+queryEl.addEventListener("input", () => {
+  filter.query = queryEl.value;
+  showList();
+});
+sortEl.addEventListener("change", () => {
+  filter.sort = sortEl.value as Sort;
+  save("sort", filter.sort);
+  showList();
+});
+barEl.addEventListener("click", (e) => {
+  const b = (e.target as HTMLElement).closest<HTMLElement>("[data-chip]");
+  if (!b) return;
+  const id = b.dataset.chip as Chip;
+  if (!filter.chips.delete(id)) filter.chips.add(id);
+  showList();
+});
 
 // ---- showing -----------------------------------------------------------------------------
 
@@ -290,10 +358,13 @@ function render(keepScroll: boolean) {
   if (seen !== current.path) {
     seen = current.path;
     collapsed.clear();
-    patch.files.forEach((f) => f.hunks.reduce((n, h) => n + h.lines.length, 0) > BIG && collapsed.add(key(f)));
+    patch.files.forEach((f) => (isGenerated(key(f)) || lineCount(f) > BIG) && collapsed.add(key(f)));
+    filter.query = "";
+    filter.chips.clear();
+    queryEl.value = "";
   }
   content.innerHTML = metaHtml(patch, fileName(current.path)) + patch.files.map((f, i) => fileHtml(f, i)).join("");
-  filesEl.innerHTML = listHtml(patch);
+  showList();
   empty.hidden = true;
   layout.hidden = false;
   layout.classList.toggle("no-side", !sideOpen || patch.files.length < 2);
@@ -313,7 +384,7 @@ function showRaw() {
   patch = null;
   content.innerHTML = `<section class="meta"><h1>${esc(fileName(current!.path))}</h1><div class="byline">This does not look like a unified diff, so it is shown as written.</div></section><pre class="plain" id="raw"></pre>`;
   document.getElementById("raw")!.textContent = current!.content;
-  filesEl.innerHTML = "";
+  listEl.innerHTML = "";
   empty.hidden = true;
   layout.hidden = false;
   layout.classList.add("no-side");
@@ -361,7 +432,7 @@ function toggleFile(section: HTMLElement) {
     body.innerHTML = fileBody(f);
   } else {
     collapsed.add(key(f));
-    body.innerHTML = "";
+    body.innerHTML = foldedBody(f);
   }
 }
 
@@ -375,6 +446,7 @@ content.addEventListener("click", (e) => {
   }
   const head = target.closest<HTMLElement>(".file-head");
   if (head && !getSelection()?.toString()) toggleFile(head.parentElement!);
+  else if (target.closest(".hint")) toggleFile(target.closest<HTMLElement>(".file")!);
 });
 
 filesEl.addEventListener("click", (e) => {
@@ -382,11 +454,13 @@ filesEl.addEventListener("click", (e) => {
   if (!a) return;
   const section = content.querySelector<HTMLElement>(`.file[data-i="${a.dataset.i}"]`)!;
   if (section.classList.contains("collapsed")) toggleFile(section);
-  window.scrollTo({ top: window.scrollY + section.getBoundingClientRect().top - 41 - 4 });
-  // Near the end of the patch the file cannot reach the top of the window: show which one it is.
-  const head = section.querySelector(".file-head")!;
-  head.classList.add("launch-line");
-  setTimeout(() => head.classList.remove("launch-line"), 900);
+  // An entry of the outline points at a hunk, a file at its header. Near the end of the patch the
+  // target cannot reach the top of the window: the flash shows which one it is.
+  const hunk = a.dataset.src ? section.querySelector<HTMLElement>(`tr.hunk[data-src="${a.dataset.src}"]`) : null;
+  const target = hunk ?? section.querySelector<HTMLElement>(".file-head")!;
+  window.scrollTo({ top: window.scrollY + target.getBoundingClientRect().top - (hunk ? HEAD + 4 : 41 + 4) });
+  target.classList.add("launch-line");
+  setTimeout(() => target.classList.remove("launch-line"), 900);
 });
 
 function setUnified(yes: boolean) {
@@ -445,7 +519,7 @@ function spy() {
     content.querySelectorAll<HTMLElement>(".file").forEach((s, i) => {
       if (s.getBoundingClientRect().top <= edge) active = i;
     });
-    filesEl.querySelectorAll("a").forEach((a, i) => a.classList.toggle("active", i === Math.max(active, 0)));
+    listEl.querySelectorAll<HTMLElement>("a.f").forEach((a) => a.classList.toggle("active", Number(a.dataset.i) === Math.max(active, 0)));
   });
 }
 addEventListener("scroll", spy, { passive: true });

@@ -63,6 +63,16 @@ export interface Patch {
   deleted: number;
 }
 
+/** The function or class names behind the `@@ … @@` of a file's hunks, each with the first hunk that names it. */
+export function outline(file: FileDiff): { section: string; hunk: Hunk }[] {
+  const out: { section: string; hunk: Hunk }[] = [];
+  for (const hunk of file.hunks) {
+    const section = hunk.section.trim();
+    if (section && out[out.length - 1]?.section !== section && !out.some((o) => o.section === section)) out.push({ section, hunk });
+  }
+  return out;
+}
+
 const TRAILER_KEY = /^[A-Za-z][A-Za-z0-9-]*$/;
 
 /** a/ and b/ prefixes, quotes and the tab suffix are not part of the path. */

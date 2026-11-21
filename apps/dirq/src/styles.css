@@ -27,7 +27,7 @@
   border-right: 1px solid var(--border-soft);
   font-size: 12.5px;
 }
-#files a {
+#files a.f {
   display: grid;
   grid-template-columns: 18px minmax(0, 1fr) auto;
   gap: 6px;
@@ -39,11 +39,51 @@
   cursor: pointer;
 }
 #files a:hover { background: var(--surface); }
-#files a.active { background: color-mix(in srgb, var(--accent) 14%, var(--bg)); }
+#files a.f.active { background: color-mix(in srgb, var(--accent) 14%, var(--bg)); }
 #files .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; direction: rtl; text-align: left; }
 #files .nm bdi { direction: ltr; unicode-bidi: plaintext; }
 #files .nm i { font-style: normal; color: var(--muted); }
 #files .cnt { font: 11px var(--mono); white-space: nowrap; }
+#files a.sec {
+  display: block;
+  padding: 2px 8px 2px 30px;
+  border-radius: 6px;
+  color: var(--muted);
+  font: 11.5px var(--mono);
+  text-decoration: none;
+  cursor: pointer;
+}
+#files a.sec:hover { background: var(--surface); color: var(--fg); }
+#files a.sec .nm { display: block; direction: ltr; }
+.fl-bar { display: grid; gap: 6px; margin: 0 4px 10px 0; }
+.fl-q {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 5px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--fg);
+  font: inherit;
+}
+.fl-chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.fl-chips .chip {
+  padding: 1px 8px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 11.5px; font-family: inherit;
+  cursor: pointer;
+}
+.fl-chips .chip[aria-pressed="true"] { background: color-mix(in srgb, var(--accent) 16%, var(--bg)); border-color: var(--accent); color: var(--fg); }
+.fl-sort { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 11.5px; }
+.fl-sort select { flex: 1; min-width: 0; background: var(--bg); color: var(--fg); border: 1px solid var(--border); border-radius: 6px; font: inherit; padding: 2px 4px; }
+.fl-count:empty { display: none; }
+.fl-count, #files .none { color: var(--muted); font-size: 11.5px; }
+#files .none { padding: 6px 8px; }
+.note.hint { cursor: pointer; }
+.note.hint u { text-decoration: none; color: var(--accent); }
 .a { color: var(--add); }
 .d { color: var(--del); }
 .st {
