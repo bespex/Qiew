@@ -11,7 +11,7 @@ import "./styles.css";
 import { setApp } from "@qiew/frame/app";
 import { setExportContent } from "@qiew/frame/export";
 import { plural } from "@qiew/frame/fragment";
-import { onRevealRequest, revealElement, revealLaunchLine, revealTextLine } from "@qiew/frame/launch";
+import { launchDocId, onRevealRequest, revealElement, revealLaunchLine, revealTextLine } from "@qiew/frame/launch";
 import { openInitial } from "@qiew/frame/reveal";
 import { closeSearch, initSearch, refreshSearch } from "@qiew/frame/search";
 import { JumpHistory } from "@qiew/frame/jumps";
@@ -20,7 +20,9 @@ import { highlightLines, languageOf, markRanges } from "@qiew/frame/highlight";
 import { initToolbar, updateToolbar } from "@qiew/frame/toolbar";
 import { type DiffLine, type FileDiff, type Hunk, type Patch, type Span, describeInfo, inlineDiff, outline, parsePatch } from "./diff";
 import { CHIPS, type Chip, type FileFilter, type Sort, visibleFiles } from "./filter";
+import { docKey } from "./docid";
 import { isGenerated } from "./generated";
+import { type Anchor, anchorOf, findAnchor, freshKey, updateFresh } from "./live";
 
 setApp("dirq");
 initToolbar();
@@ -70,7 +72,12 @@ const filter: FileFilter & { chips: Set<Chip> } = {
 let current: Doc | null = null;
 let patch: Patch | null = null;
 const collapsed = new Set<string>(); // by file key
-let seen = ""; // the patch the collapsed set belongs to
+let seen = ""; // the document (docKey) the collapsed set and the marks belong to
+let docId: string | null = null; // what the call that opened it named it (--id)
+/** What is new since an earlier version of the same document, until the reader clears it. */
+let fresh = new Set<string>();
+/** What became new in the reload being drawn: it flashes, once. */
+let flashing = new Set<string>();
 let firstShown = true;
 /** Where the view was before each jump (file, change, outline entry), for Alt+← and Alt+→. */
 const jumps = new JumpHistory<number>((a, b) => Math.abs(a - b) < 8);
@@ -175,9 +182,9 @@ function rowsOf(hunk: Hunk): Row[] {
   return rows;
 }
 
-function hunkRow(h: Hunk, gap: number, cols: number): string {
+function hunkRow(h: Hunk, index: number, gap: number, cols: number): string {
   const note = gap > 0 ? `<span class="gap">⋯ ${plural(gap, "unchanged line")}</span>` : "";
-  return `<tr class="hunk" data-src="${h.src}"><td colspan="${cols}">${note}${esc(h.header.replace(/ @@.*$/, " @@"))}${h.section ? ` <span class="sec">${esc(h.section)}</span>` : ""}</td></tr>`;
+  return `<tr class="hunk" data-src="${h.src}" data-h="${index}"><td colspan="${cols}">${note}${esc(h.header.replace(/ @@.*$/, " @@"))}${h.section ? ` <span class="sec">${esc(h.section)}</span>` : ""}</td></tr>`;
 }
 
 function tableOf(f: FileDiff): string {
@@ -189,8 +196,8 @@ function tableOf(f: FileDiff): string {
   const colours = coloursOf(f);
   // Unified: a change shows all removed lines, then all added ones.
   let adds = "";
-  for (const h of f.hunks) {
-    html += adds + hunkRow(h, h.oldStart - prevEnd, cols);
+  for (const [index, h] of f.hunks.entries()) {
+    html += adds + hunkRow(h, index, h.oldStart - prevEnd, cols);
     adds = "";
     const last = [...h.lines].reverse().find((l) => l.oldNo !== undefined);
     prevEnd = (last?.oldNo ?? h.oldStart - 1) + 1;
@@ -324,19 +331,26 @@ function commonDir(paths: string[]): string {
   return n > 0 ? parts.slice(0, n).join("/") + "/" : "";
 }
 
+/** How many marks a file has (a file without hunks counts once). */
+function freshIn(f: FileDiff): number {
+  const own = f.hunks.filter((h) => fresh.has(freshKey(key(f), h))).length;
+  return own + (fresh.has(freshKey(key(f), null)) ? 1 : 0);
+}
+
 function listHtml(p: Patch): string {
   const strip = commonDir(p.files.map(key));
   const shown = visibleFiles(p.files, filter);
   const rows = shown
     .map((i) => {
       const f = p.files[i];
+      const isFresh = freshIn(f) > 0;
       const sections = outline(f)
         .map((o) => `<a class="sec" data-i="${i}" data-src="${o.hunk.src}" title="${esc(o.section)}"><span class="nm"><bdi>${esc(o.section)}</bdi></span></a>`)
         .join("");
       return (
         `<a class="f" data-i="${i}"><span class="st st-${f.status}">${STATUS[f.status]}</span>` +
         `<span class="nm"><bdi>${pathHtml(key(f), strip)}</bdi></span>` +
-        `<span class="cnt"><span class="a">+${f.added}</span> <span class="d">−${f.deleted}</span></span></a>${sections}`
+        `<span class="cnt">${isFresh ? `<span class="dot" title="New since the last reload – click to clear"></span>` : ""}<span class="a">+${f.added}</span> <span class="d">−${f.deleted}</span></span></a>${sections}`
       );
     })
     .join("");
@@ -352,7 +366,7 @@ barEl.innerHTML =
   `<input type="search" class="fl-q" placeholder="Filter files" aria-label="Filter files" spellcheck="false" autocomplete="off">` +
   `<div class="fl-chips">${CHIPS.map((c) => `<button type="button" class="chip" data-chip="${c.id}" aria-pressed="false">${c.label}</button>`).join("")}</div>` +
   `<label class="fl-sort">Sort <select aria-label="Sort files"><option value="folder">patch order</option><option value="size">size of change</option><option value="status">status</option></select></label>` +
-  `<div class="fl-count"></div>`;
+  `<div class="fl-count"></div><button type="button" class="fl-fresh" hidden></button>`;
 filesEl.append(barEl, listEl);
 const queryEl = barEl.querySelector<HTMLInputElement>(".fl-q")!;
 const sortEl = barEl.querySelector<HTMLSelectElement>("select")!;
@@ -367,6 +381,10 @@ function showList() {
   barEl.querySelectorAll<HTMLElement>(".chip").forEach((b) => b.setAttribute("aria-pressed", String(filter.chips.has(b.dataset.chip as Chip))));
   const n = visibleFiles(patch.files, filter).length;
   barEl.querySelector(".fl-count")!.textContent = n < patch.files.length ? `${n} of ${plural(patch.files.length, "file")}` : "";
+  const marks = patch.files.reduce((sum, f) => sum + freshIn(f), 0);
+  const clear = barEl.querySelector<HTMLButtonElement>(".fl-fresh")!;
+  clear.hidden = marks === 0;
+  clear.textContent = `${marks} new since the last reload · Clear`;
   spy();
 }
 
@@ -391,17 +409,70 @@ barEl.addEventListener("click", (e) => {
 
 const fileName = (path: string) => path.split("/").pop() ?? path;
 
-function render(keepScroll: boolean) {
+/** The place the view is at, as a hunk: the last hunk header above the top edge of the content. */
+function anchorNow(): Anchor | null {
+  if (!patch) return null;
+  const edge = HEAD + 6;
+  let best: { section: HTMLElement; row: HTMLElement } | null = null;
+  content.querySelectorAll<HTMLElement>(".file:not(.collapsed)").forEach((section) => {
+    section.querySelectorAll<HTMLElement>("tr.hunk").forEach((row) => {
+      if (row.getBoundingClientRect().top <= edge) best = { section, row };
+    });
+  });
+  if (!best) return null;
+  const { section, row } = best as { section: HTMLElement; row: HTMLElement };
+  const f = patch.files[Number(section.dataset.i)];
+  return anchorOf(f, Number(row.dataset.h), row.getBoundingClientRect().top - edge);
+}
+
+/** Scrolls so that the anchor's hunk sits where it sat; false if it cannot be found. */
+function restore(anchor: Anchor): boolean {
+  const at = patch && findAnchor(patch, anchor);
+  if (!at) return false;
+  const row = content.querySelector<HTMLElement>(`.file[data-i="${at.file}"]:not(.collapsed) tr.hunk[data-h="${at.hunk}"]`);
+  if (!row) return false;
+  window.scrollTo(0, window.scrollY + row.getBoundingClientRect().top - (HEAD + 6) - anchor.offset);
+  return true;
+}
+
+/** Marks the rows of the hunks that are new: the bar at the left, and (once) the flash. */
+function applyFresh(section: HTMLElement) {
+  if (!patch || fresh.size === 0) return;
+  const f = patch.files[Number(section.dataset.i)];
+  section.querySelectorAll<HTMLElement>("tr.hunk").forEach((head) => {
+    const k = freshKey(key(f), f.hunks[Number(head.dataset.h)]);
+    if (!fresh.has(k)) return;
+    const now = flashing.has(k);
+    for (let tr: Element | null = head; tr && (tr === head || !tr.matches(".hunk")); tr = tr.nextElementSibling) {
+      tr.classList.add("fresh");
+      if (now) tr.classList.add("now");
+    }
+  });
+}
+
+function clearFresh(file?: string) {
+  for (const k of [...fresh]) if (!file || k.startsWith(`${file}\0`)) fresh.delete(k);
+  content.querySelectorAll(".fresh").forEach((el) => el.classList.remove("fresh", "now"));
+  showList();
+  drawRuler();
+}
+
+function render() {
   if (!current) return;
-  const scroll = keepScroll ? window.scrollY : 0;
   closeSearch();
+  const before = patch;
+  const anchor = anchorNow();
+  const scroll = window.scrollY;
   patch = parsePatch(current.content);
   if (!patch) {
     showRaw();
     return;
   }
-  if (seen !== current.path) {
-    seen = current.path;
+  const id = docKey(current.path, patch, docId);
+  const reload = id === seen;
+  if (!reload) {
+    seen = id;
+    fresh = new Set();
     collapsed.clear();
     jumps.clear();
     patch.files.forEach((f) => (isGenerated(key(f)) || lineCount(f) > BIG) && collapsed.add(key(f)));
@@ -409,7 +480,14 @@ function render(keepScroll: boolean) {
     filter.chips.clear();
     queryEl.value = "";
   }
+  // A new version of the same document: what differs from the last one is marked, the rest of the
+  // state (folded files, filter, place) stays.
+  const marked = updateFresh(reload ? fresh : new Set(), reload ? before : null, patch);
+  fresh = marked.keys;
+  flashing = marked.now;
   content.innerHTML = metaHtml(patch, fileName(current.path)) + patch.files.map((f, i) => fileHtml(f, i)).join("");
+  content.querySelectorAll<HTMLElement>(".file").forEach(applyFresh);
+  flashing = new Set();
   showList();
   empty.hidden = true;
   layout.hidden = false;
@@ -420,9 +498,11 @@ function render(keepScroll: boolean) {
   $btn("ws-btn").setAttribute("aria-pressed", String(ignoreWs));
   updateToolbar(current.content, `${plural(patch.files.length, "File")} · +${patch.added} −${patch.deleted}`);
   setExportContent(exportHtml);
-  window.scrollTo(0, scroll);
+  if (!reload) window.scrollTo(0, 0);
+  else if (!anchor || !restore(anchor)) window.scrollTo(0, scroll);
   refreshSearch();
   spy();
+  drawRuler();
 }
 
 /** Not a patch we understand: the text as it is, so nothing is hidden. */
@@ -449,10 +529,12 @@ function showMessage(text: string, isError = false) {
   empty.classList.toggle("error", isError);
 }
 
-async function open(path: string) {
+/** `fromCaller`: handed over by the program that started Dirq, so its `--id` names this document. */
+async function open(path: string, fromCaller = true) {
   try {
     current = await invoke<Doc>("open_file", { path });
-    render(false);
+    docId = fromCaller ? await launchDocId() : null;
+    render();
     if (firstShown) {
       firstShown = false;
       // Room for two columns and the file list (--geometry wins; the backend knows).
@@ -476,10 +558,12 @@ function toggleFile(section: HTMLElement) {
   if (open) {
     collapsed.delete(key(f));
     body.innerHTML = fileBody(f);
+    applyFresh(section);
   } else {
     collapsed.add(key(f));
     body.innerHTML = foldedBody(f);
   }
+  drawRuler();
 }
 
 content.addEventListener("click", (e) => {
@@ -496,8 +580,11 @@ content.addEventListener("click", (e) => {
 });
 
 filesEl.addEventListener("click", (e) => {
-  const a = (e.target as HTMLElement).closest<HTMLElement>("a[data-i]");
+  const t = e.target as HTMLElement;
+  if (t.closest(".fl-fresh")) return clearFresh();
+  const a = t.closest<HTMLElement>("a[data-i]");
   if (!a) return;
+  if (t.closest(".dot")) return clearFresh(patch ? key(patch.files[Number(a.dataset.i)]) : undefined);
   const section = content.querySelector<HTMLElement>(`.file[data-i="${a.dataset.i}"]`)!;
   if (section.classList.contains("collapsed")) toggleFile(section);
   // An entry of the outline points at a hunk, a file at its header. Near the end of the patch the
@@ -511,18 +598,18 @@ filesEl.addEventListener("click", (e) => {
 function setUnified(yes: boolean) {
   unified = yes;
   save("mode", yes ? "unified" : "split");
-  render(true);
+  render();
 }
 $btn("mode-btn").addEventListener("click", () => setUnified(!unified));
 $btn("ws-btn").addEventListener("click", () => {
   ignoreWs = !ignoreWs;
   save("ws", ignoreWs ? "1" : "0");
-  render(true);
+  render();
 });
 $btn("side-btn").addEventListener("click", () => {
   sideOpen = !sideOpen;
   save("side", sideOpen ? "1" : "0");
-  render(true);
+  render();
 });
 
 // ---- navigating the changes --------------------------------------------------------------
@@ -585,6 +672,55 @@ setKeyHelp([
 $btn("next-btn").title = withKey("Next change", "nextChange");
 $btn("prev-btn").title = withKey("Previous change", "prevChange");
 $btn("side-btn").title = withKey("Files", "toggleNav");
+
+// ---- the ruler at the right edge ---------------------------------------------------------
+
+/** What the marks on the ruler jump to; indexed by their `data-n`. */
+let rulerTargets: HTMLElement[] = [];
+const ruler = document.createElement("div");
+ruler.id = "ruler";
+ruler.setAttribute("aria-hidden", "true");
+document.body.append(ruler);
+
+/**
+ * Like the overview strip of an IDE, beside the scroll bar: a thin tick for every change, a
+ * stronger mark for what is new since the last reload. A click on a mark goes there.
+ */
+let rulerFrame = 0;
+function drawRuler() {
+  cancelAnimationFrame(rulerFrame);
+  rulerFrame = requestAnimationFrame(() => {
+    rulerTargets = [];
+    if (!patch || layout.hidden) {
+      ruler.innerHTML = "";
+      return;
+    }
+    const total = document.documentElement.scrollHeight;
+    const mark = (el: HTMLElement, cls: string) => {
+      const at = ((el.getBoundingClientRect().top + window.scrollY) / total) * 100;
+      rulerTargets.push(el);
+      return `<i class="${cls}" data-n="${rulerTargets.length - 1}" style="top:${at.toFixed(3)}%"></i>`;
+    };
+    let html = "";
+    content.querySelectorAll<HTMLElement>("tr.cs").forEach((tr) => (html += mark(tr, "tick")));
+    // On top of the ticks, so a click on a new change finds the new mark.
+    content.querySelectorAll<HTMLElement>("tr.hunk.fresh").forEach((tr) => (html += mark(tr, "new")));
+    content.querySelectorAll<HTMLElement>(".file.collapsed").forEach((section) => {
+      const f = patch!.files[Number(section.dataset.i)];
+      if (freshIn(f) > 0) html += mark(section.querySelector<HTMLElement>(".file-head")!, "new");
+    });
+    ruler.innerHTML = html;
+  });
+}
+ruler.addEventListener("click", (e) => {
+  const n = (e.target as HTMLElement).closest<HTMLElement>("[data-n]")?.dataset.n;
+  const target = n === undefined ? undefined : rulerTargets[Number(n)];
+  if (!target) return;
+  const edge = HEAD + 6;
+  jumpTo(window.scrollY + target.getBoundingClientRect().top - edge - (window.innerHeight - edge) / 4);
+  flash(target);
+});
+addEventListener("resize", drawRuler);
 
 /** Which change and which file the view is at. */
 let spyFrame = 0;
@@ -659,14 +795,14 @@ getCurrentWebview().onDragDropEvent((event) => {
   } else {
     document.body.classList.remove("dragging");
     empty.hidden = current !== null;
-    if (p.type === "drop" && p.paths[0]) open(p.paths[0]);
+    if (p.type === "drop" && p.paths[0]) open(p.paths[0], false);
   }
 });
 
 listen<Doc>("file-changed", ({ payload }) => {
   if (current && payload.path === current.path) {
     current = payload;
-    render(true);
+    render();
   }
 });
 listen<string>("open-file", ({ payload }) => open(payload));

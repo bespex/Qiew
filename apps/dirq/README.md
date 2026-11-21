@@ -64,6 +64,13 @@ Requirements: Ubuntu 24.04+, Linux Mint 22+ or Debian 13+ (x86_64).
   patch order, size of the change or status. The filter survives a reload of the patch file.
 - **Outline** – the function or class names in the `@@ … @@` lines appear under each file; click one to jump
   to its hunk.
+- **Live review** – while a patch changes (a file that is rewritten, or a program that hands Dirq new versions
+  with `--reuse`), the view stays where it is: it keeps its place by the hunk you were reading, not by pixels, and
+  the folded files, the filter and the selection stay. What is new or changed since the last version flashes and
+  keeps a thin bar at the left; the file list shows a dot at such files, and a strip beside the scroll bar marks
+  every change, new ones stronger – click a mark to go there. "Clear" in the file list (or a click on a dot) removes
+  the marks. Dirq tells a new version from another document by the path, or by `--id <text>` when a program hands
+  the patch over through standard input: the same text is a new version of the same document.
 - **Navigate by keyboard** – F7 / Shift+F7 (or the arrows) jump to the next or previous change, Alt+↓ / Alt+↑
   to the next or previous file, Alt+← / Alt+→ back and forward along the jumps made (files, changes, outline
   entries), Ctrl+Shift+O shows or hides the file list. `?` – or "Keyboard Shortcuts" in the menu – lists them.
