@@ -25,6 +25,10 @@ interface Doc {
   path: string;
   dir: string;
   content: string;
+  /** Opened with --annotate: comments may be written into the file. */
+  annotate: boolean;
+  /** The file can be written (only asked when `annotate`). */
+  writable: boolean;
 }
 
 const MD_EXT = /\.(md|markdown|mdown|mkd)$/i;
@@ -116,6 +120,10 @@ function render(doc: Doc, keepScroll: boolean) {
       })
       .join(", ");
   });
+
+  // Per document: a file opened by a link, or handed over again without --annotate, is read-only.
+  document.body.classList.toggle("annotate", doc.annotate);
+  document.body.classList.toggle("annotate-readonly", doc.annotate && !doc.writable);
 
   empty.hidden = true;
   article.hidden = false;

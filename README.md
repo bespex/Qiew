@@ -111,13 +111,15 @@ Every viewer understands the same command line, so a script or another program c
 | `-` | read the document from standard input: `git diff \| dirq -`, `curl -s … \| jayq -` |
 | `--line <n>` | show that line of the file and mark it for a moment. Xaq and Jayq re-indent, so they find the line by what it says; Marq shows the block that holds it; Trisq has no lines to show. |
 | `--geometry` | place the window: content size and position in physical pixels; either part may be left out (`900x700`, `+40+60`) |
+| `--annotate` | Marq only: allow comments on the blocks of this file (`<!-- @ai: … -->`); Marq writes them into the file and changes nothing else. It holds for this call and this file: a file handed over again without it, or opened by a link, is read-only. |
 | `--reuse` | hand the file to a window that was started with `--reuse` before, if one is open, instead of opening another; it comes to the front. Windows started without it are left alone. `<app> --reuse --line 40` shows a line of the file that window already has. |
 | `--register-default` | make the app the default for its files, without asking |
 | `--help`, `-h`, `-?` | print what the program is, how it is called and what it can do, then exit |
 | `--version` | print the version, then exit |
 
 Standard input is kept as a file of the app's own in the runtime directory (`$XDG_RUNTIME_DIR/<app>/`) and
-removed when the window is closed; the files a viewer shows are never written to.
+removed when the window is closed; the files a viewer shows are never written to – except comment lines in
+a file Marq was asked to annotate (`--annotate`).
 
 ## Working with CodeDeck
 

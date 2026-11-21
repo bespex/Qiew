@@ -3,7 +3,8 @@
 **Markdown files, beautifully rendered – just to read.**
 
 Marq turns a Markdown file into a clean, readable page: headings, tables, code, images. Follow links to other
-documents and step back, like in a browser. It is a read-only viewer: it never writes to your files.
+documents and step back, like in a browser. It is a viewer: it never writes to your files – unless started with
+`--annotate`, and then only to add, tick or remove comment lines.
 
 **Website:** https://bespex.github.io/marq/ · part of [be spex](https://bespex.github.io) – small, focused apps for Linux
 
@@ -73,8 +74,12 @@ Requirements: Ubuntu 24.04+, Linux Mint 22+ or Debian 13+ (x86_64).
 - **Live reload** – when another program changes the file (including atomic saves), Marq follows.
 - **Search and colour schemes** – Ctrl+F with match count; Soft Light, Soft Dark, Sepia and Slate / Nord, the
   choice is kept.
-- **Read-only** – the files shown are only read, never written. The only writes are an export to a file you
-  choose and the AppImage replacing itself when you accept an update.
+- **Comments on blocks** – `<!-- @ai: … -->`, `<!-- @me: … -->` and `<!-- @you: … -->` before a block are
+  instructions for an AI, notes to yourself and notes for others. Marq shows them as small marks in the margin,
+  in the colour of their type; pointing at a mark shows its text.
+- **Read-only** – the files shown are only read, never written. The one exception is a file opened with
+  `--annotate`: Marq may then write comments into it, and changes nothing but comment lines. Besides, Marq
+  writes an export to a file you choose, and the AppImage replaces itself when you accept an update.
 
 ## Usage
 

@@ -11,6 +11,8 @@ import {
   editComment,
   insertComment,
   readComments,
+  relocateBlock,
+  relocateComment,
   sameRendering,
   setDone,
 } from "./annotate";
@@ -233,5 +235,32 @@ describe("refusals", () => {
 
   it("knows only its types", () => {
     expect(() => insertComment("a\n", { line: 0, type: "paragraph_open" }, "foo" as never, "x")).toThrow(AnnotateError);
+  });
+});
+
+describe("finding again what was seen (Z6)", () => {
+  const seen = "# T\n\nErster.\n\nZweiter.\n";
+  const block = { line: 4, type: "paragraph_open" };
+
+  it("keeps the place when nothing changed", () => {
+    expect(relocateBlock(seen, seen, block)).toEqual(block);
+  });
+
+  it("follows a block that moved", () => {
+    const now = "# T\n\nNeu davor.\n\nErster.\n\nZweiter.\n";
+    expect(relocateBlock(seen, now, block)).toEqual({ line: 6, type: "paragraph_open" });
+  });
+
+  it("gives up when the block is gone or not the only one", () => {
+    expect(relocateBlock(seen, "# T\n\nErster.\n\nZweiter, geändert.\n", block)).toBeNull();
+    expect(relocateBlock(seen, "# T\n\nZweiter.\n\nErster.\n\nZweiter.\n", block)).toBeNull();
+  });
+
+  it("follows a comment by its head and text", () => {
+    const withComment = insertComment(seen, block, "ai", "kürzen");
+    const now = "Neu.\n\n" + withComment;
+    expect(relocateComment(withComment, now, 4)).toBe(6);
+    expect(relocateComment(withComment, now.replace("kürzen", "anders"), 4)).toBeNull();
+    expect(relocateComment(withComment, withComment.replace("\n\nErster", "\n\n<!-- @ai: kürzen -->\n\nErster"), 4)).toBeNull();
   });
 });

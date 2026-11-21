@@ -3,7 +3,7 @@
 //! viewer knowing about it.
 //!
 //! ```text
-//! <app> [<file> | -] [--line <n>] [--geometry <W>x<H>+<X>+<Y>] [--reuse]
+//! <app> [<file> | -] [--line <n>] [--geometry <W>x<H>+<X>+<Y>] [--reuse] [--annotate]
 //! ```
 //!
 //! - `-` reads the document from standard input (`git diff | dirq -`). It is
@@ -15,12 +15,18 @@
 //! - `--reuse` hands the file to a window started with `--reuse` before, if
 //!   one is open, instead of opening another. Windows started without it are
 //!   left alone.
+//! - `--annotate` allows an app that can comment a document to do so, for the
+//!   file of this call only: Marq may then write comments into it. It holds
+//!   per call and per file, not per window: a file handed over with `--reuse`
+//!   but without `--annotate` is shown read-only again, a file opened by a
+//!   link or a drop never is annotated. Standard input never is either.
 //!
 //! The frontend part is `@qiew/frame/launch`.
 
+use std::collections::HashSet;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::os::unix::net::{UnixListener, UnixStream};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 use std::{env, fs, io, thread};
 
@@ -72,6 +78,7 @@ pub struct Launch {
     pub line: Option<u32>,
     pub placement: Option<Placement>,
     pub reuse: bool,
+    pub annotate: bool,
 }
 
 impl Launch {
@@ -83,6 +90,7 @@ impl Launch {
                 "--line" => launch.line = args.next().and_then(|v| v.parse().ok()).filter(|n| *n > 0),
                 "--geometry" => launch.placement = args.next().and_then(|v| Placement::parse(&v)),
                 "--reuse" => launch.reuse = true,
+                "--annotate" => launch.annotate = true,
                 "-" if launch.file.is_none() => launch.file = Some(arg),
                 flag if WITH_VALUE.contains(&flag) => drop(args.next()),
                 flag if flag.starts_with('-') => {}
@@ -99,6 +107,29 @@ static LAUNCH: OnceLock<Launch> = OnceLock::new();
 static LINE: Mutex<Option<u32>> = Mutex::new(None);
 /// The file standard input was written to, to be removed on exit.
 static STDIN_FILE: Mutex<Option<PathBuf>> = Mutex::new(None);
+/// The files the app may annotate: given with `--annotate`, by this call or a later one (`--reuse`).
+static ANNOTATE: Mutex<Option<HashSet<PathBuf>>> = Mutex::new(None);
+
+/// The file as the app opens it: symbolic links resolved.
+fn real(file: &Path) -> PathBuf {
+    fs::canonicalize(file).unwrap_or_else(|_| file.to_path_buf())
+}
+
+/// Allows or forbids annotating `file`, as the call that named it asked.
+fn set_annotate(file: &Path, allowed: bool) {
+    let mut files = ANNOTATE.lock().unwrap();
+    let files = files.get_or_insert_with(HashSet::new);
+    if allowed {
+        files.insert(real(file));
+    } else {
+        files.remove(&real(file));
+    }
+}
+
+/// Whether the app may annotate `file`: only if the call that named it said `--annotate`.
+pub fn may_annotate(file: &Path) -> bool {
+    ANNOTATE.lock().unwrap().as_ref().is_some_and(|files| files.contains(&real(file)))
+}
 
 /// The command line of this process.
 pub fn get() -> &'static Launch {
@@ -111,6 +142,9 @@ struct Handover {
     file: Option<String>,
     line: Option<u32>,
     geometry: Option<(Option<(u32, u32)>, Option<(i32, i32)>)>,
+    /// Missing from older viewers: read-only, as they were.
+    #[serde(default)]
+    annotate: bool,
 }
 
 /// The app's own directory for what lives only while it runs.
@@ -187,6 +221,7 @@ pub(crate) fn init(info: &AppInfo) -> bool {
             geometry: launch
                 .placement
                 .map(|p| (p.size.map(|s| (s.width, s.height)), p.position.map(|p| (p.x, p.y)))),
+            annotate: launch.annotate && from_stdin.is_none(),
         };
         if let Ok(message) = serde_json::to_string(&handover)
             && writeln!(running, "{message}").is_ok()
@@ -195,6 +230,11 @@ pub(crate) fn init(info: &AppInfo) -> bool {
         }
     }
 
+    if let Some(file) = launch.file.as_deref()
+        && from_stdin.is_none()
+    {
+        set_annotate(Path::new(file), launch.annotate);
+    }
     *STDIN_FILE.lock().unwrap() = from_stdin;
     *LINE.lock().unwrap() = launch.line;
     let _ = LAUNCH.set(launch);
@@ -225,6 +265,9 @@ pub(crate) fn listen(app: &AppHandle, info: &AppInfo) {
             }
             let Ok(handover) = serde_json::from_str::<Handover>(&message) else { continue };
             *LINE.lock().unwrap() = handover.line;
+            if let Some(file) = handover.file.as_deref() {
+                set_annotate(Path::new(file), handover.annotate);
+            }
             if let Some(window) = app.get_webview_window("main") {
                 if let Some((size, position)) = handover.geometry {
                     crate::window_layout::apply(
@@ -282,6 +325,34 @@ mod tests {
         assert_eq!(launch(&["--register-default"]).file, None);
         assert_eq!(launch(&["a", "--line", "x"]).line, None);
         assert_eq!(launch(&["a", "--line", "0"]).line, None);
+        assert!(launch(&["--annotate", "a.md"]).annotate);
+        assert!(!launch(&["a.md"]).annotate);
+        assert_eq!(launch(&["--annotate", "a.md"]).file.as_deref(), Some("a.md"));
+    }
+
+    #[test]
+    fn annotates_only_the_files_named_with_annotate() {
+        let dir = env::temp_dir().join(format!("qiew-annotate-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("a.md");
+        fs::write(&file, "x").unwrap();
+        let link = dir.join("link.md");
+        let _ = fs::remove_file(&link);
+        std::os::unix::fs::symlink(&file, &link).unwrap();
+
+        assert!(!may_annotate(&file), "nothing is allowed without --annotate");
+        set_annotate(&link, true);
+        assert!(may_annotate(&file) && may_annotate(&link), "a link stands for its target");
+        assert!(!may_annotate(&dir.join("other.md")));
+        set_annotate(&file, false);
+        assert!(!may_annotate(&file), "a later call without --annotate takes it back");
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_handover_from_an_older_viewer_is_read_only() {
+        let old: Handover = serde_json::from_str(r#"{"file":"a.md","line":null,"geometry":null}"#).unwrap();
+        assert!(!old.annotate);
     }
 
     #[test]

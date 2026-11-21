@@ -1,10 +1,13 @@
-//! Marq – read-only Markdown viewer.
+//! Marq – Markdown viewer.
 //!
 //! Zero-Touch-Policy: this backend never writes to the files it shows; they
-//! are only read, the watcher merely observes. The only write is the HTML
-//! export, to a path the user picked in the save dialog ([`export`]). As an
-//! AppImage, an accepted update replaces the image file.
+//! are only read, the watcher merely observes. The one exception: a file
+//! named with `--annotate` takes comments, and only comment lines change
+//! ([`annotate`]). Besides, the HTML export writes to a path the user picked
+//! in the save dialog ([`export`]); as an AppImage, an accepted update
+//! replaces the image file.
 
+mod annotate;
 mod export;
 
 use std::fs;
@@ -36,7 +39,10 @@ static INFO: AppInfo = AppInfo {
         "Exports the page as one HTML file.",
     ],
     usage: &[],
-    options: &[],
+    options: &[(
+        "--annotate",
+        "allow comments on the blocks of this file (<!-- @ai: … -->): Marq writes them into it, nothing else",
+    )],
 };
 
 #[derive(Clone, Serialize)]
@@ -44,12 +50,19 @@ struct Document {
     path: String,
     dir: String,
     content: String,
+    /// Started with `--annotate` for this file: comments may be added, ticked and removed.
+    annotate: bool,
+    /// The file can be written (only asked when `annotate`).
+    writable: bool,
 }
 
 fn load(path: &Path) -> Result<Document, String> {
     let content = fs::read_to_string(path)
         .map_err(|e| format!("{}: {e}", path.display()))?;
+    let annotate = qiew_frame::launch::may_annotate(path);
     Ok(Document {
+        annotate,
+        writable: annotate && annotate::writable(path),
         path: path.to_string_lossy().into_owned(),
         dir: path
             .parent()
@@ -109,7 +122,7 @@ pub fn run() {
         .plugin(tauri_plugin_clipboard_manager::init())
         .manage(Viewer::default())
         .manage(export::exporter())
-        .invoke_handler(tauri::generate_handler![open_file, initial_file, show_window, qiew_frame::about::about_info, qiew_frame::about::open_about_link, qiew_frame::export::export_info, qiew_frame::export::export_file, qiew_frame::launch::take_line, qiew_frame::siblings::has_viewer, qiew_frame::siblings::open_in_viewer])
+        .invoke_handler(tauri::generate_handler![open_file, initial_file, show_window, qiew_frame::about::about_info, qiew_frame::about::open_about_link, qiew_frame::export::export_info, qiew_frame::export::export_file, qiew_frame::launch::take_line, qiew_frame::siblings::has_viewer, qiew_frame::siblings::open_in_viewer, annotate::read_document, annotate::save_annotated])
         .setup(|app| {
             qiew_frame::setup(app, &INFO);
             Ok(())

@@ -1,7 +1,9 @@
 # Marq: Blöcke kommentieren (Typen `@ai`, `@me`, `@you`)
 
-Stand 2026-11-21. Schritt 1 und 2 der Reihenfolge sind gebaut: der Kern (`src/annotate.ts`, Tests in
-`src/annotate.test.ts`) und die Anzeige ohne Aktionen (`src/notes.ts`, Tests in `src/notes.test.ts`); `npm test`.
+Stand 2026-11-21. Schritt 1 bis 3 der Reihenfolge sind gebaut: der Kern (`src/annotate.ts`, Tests in
+`src/annotate.test.ts`), die Anzeige ohne Aktionen (`src/notes.ts`, Tests in `src/notes.test.ts`; `npm test`) und
+`--annotate` mit dem sicheren Schreiben (`crates/frame/src/launch.rs`, `src-tauri/src/annotate.rs`, `src/write.ts`;
+`cargo test`). Es fehlt die Bedienung (Schritt 4): Noch ruft nichts in der Oberfläche das Schreiben auf.
 
 Das Zusammenspiel mit Dirq und CodeDeck (gleiche Gesten, Rahmenbausteine, Tasten) steht in `docs/BEDIENKONZEPT.md`.
 
@@ -211,6 +213,25 @@ eigenes `color-scheme` nach dem System setzt).
      nicht schreiben. Das ist die Laufzeitform der Zusicherung.
 4. **Eigenen Reload erkennen:** Nach dem Schreiben die erwartete neue Prüfsumme merken, damit der Live-Reload
    Textfeld oder Scroll nicht zurücksetzt.
+
+**Gebaut (Schritt 3):**
+
+- `--annotate` wird im Rahmen gelesen (`launch.rs`) und gilt je Datei: Marq führt die Menge der freigegebenen
+  Dateien (Symlinks aufgelöst). Eine Übergabe per `--reuse` gibt die Datei frei oder nimmt die Freigabe zurück;
+  über Links oder Ablegen geöffnete Dateien und Standardeingabe sind nie freigegeben. Ältere Viewer, die bei der
+  Übergabe kein `annotate` mitschicken, gelten als „ohne“.
+- Das Dokument meldet `annotate` und `writable` an das Frontend; `body.annotate` und `body.annotate-readonly`
+  schalten später die Bedienung.
+- Schreiben (`annotate.rs`): nur mit Freigabe (Z7, auch der Tauri-Befehl selbst prüft); nur wenn die Datei noch
+  der Stand ist, aus dem die Änderung gemacht wurde (sonst ein zweiter Versuch im Frontend, dann Meldung); atomar
+  über eine temporäre Datei mit den Rechten des Originals; Symlink bleibt Link, das Ziel wird geschrieben; Dateien
+  mit mehreren Namen (Hardlinks) werden an Ort und Stelle geschrieben, damit die Namen zusammenbleiben; nicht
+  beschreibbare Dateien werden abgelehnt.
+- Z6 im Frontend (`relocateBlock`, `relocateComment`): Hat sich die Datei seit dem Rendern geändert, wird der
+  Block über den Text seiner ersten Zeile, ein Kommentar über Kopf und Text wiedergefunden; nur ein eindeutiger
+  Treffer zählt.
+- Noch offen für Schritt 4: den eigenen Reload erkennen (`write.ts` gibt den neuen Text zurück; das folgende
+  `file-changed` mit genau diesem Text darf Eingabekarte und Scroll nicht zurücksetzen).
 
 Tasten und Gesten (Randknopf, Eingabekarte, F7 usw.) kommen aus dem Rahmen und stehen in `docs/BEDIENKONZEPT.md`.
 

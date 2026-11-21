@@ -429,3 +429,28 @@ function checked(before: string, after: string): string {
   if (!sameRendering(before, after)) throw new AnnotateError("The change would alter how the document looks; nothing written");
   return after;
 }
+
+// ---- Finding again what was seen (Z6) -------------------------------------------------------
+
+/**
+ * Where a block of the text `seen` (the one rendered) is in the file as it is `now`: the same
+ * place if nothing changed, else the one block of the same kind whose first line reads the same.
+ * Null if there is none or more than one: then nothing may be written.
+ */
+export function relocateBlock(seen: string, now: string, block: BlockRef): BlockRef | null {
+  if (seen === now) return block;
+  const first = split(seen).text[block.line];
+  if (first === undefined) return null;
+  const lines = split(now).text;
+  const hits = annotatableBlocks(now).filter((b) => b.type === block.type && lines[b.line] === first);
+  return hits.length === 1 ? hits[0] : null;
+}
+
+/** Where the comment at `line` of `seen` is `now`: the one with the same head and text, or null. */
+export function relocateComment(seen: string, now: string, line: number): number | null {
+  if (seen === now) return line;
+  const was = readComments(seen).find((c) => c.line === line);
+  if (!was) return null;
+  const hits = readComments(now).filter((c) => c.head === was.head && c.text === was.text);
+  return hits.length === 1 ? hits[0].line : null;
+}
