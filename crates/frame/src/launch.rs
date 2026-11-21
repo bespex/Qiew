@@ -3,7 +3,7 @@
 //! viewer knowing about it.
 //!
 //! ```text
-//! <app> [<file> | -] [--line <n>] [--geometry <W>x<H>+<X>+<Y>] [--reuse] [--annotate]
+//! <app> [<file> | -] [--line <n>] [--geometry <W>x<H>+<X>+<Y>] [--reuse] [--annotate] [--id <text>]
 //! ```
 //!
 //! - `-` reads the document from standard input (`git diff | dirq -`). It is
@@ -20,6 +20,12 @@
 //!   per call and per file, not per window: a file handed over with `--reuse`
 //!   but without `--annotate` is shown read-only again, a file opened by a
 //!   link or a drop never is annotated. Standard input never is either.
+//! - `--id <text>` names the document for the app: the same text means "a new
+//!   version of the document shown before", another one "a different document".
+//!   Standard input has no path to tell this by (each call keeps it under a new
+//!   name), so the caller says. Like every option, a viewer that does not know
+//!   it ignores it; put it after the file (`dirq - --id x`), or an older viewer
+//!   would take the text for the file. Each call replaces the id of the one before.
 //!
 //! The frontend part is `@qiew/frame/launch`.
 
@@ -36,7 +42,7 @@ use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize};
 use crate::AppInfo;
 
 /// Options that are followed by a value (which is therefore not the file).
-const WITH_VALUE: &[&str] = &["--line", "--geometry", "--export-html"];
+const WITH_VALUE: &[&str] = &["--line", "--geometry", "--export-html", "--id"];
 
 /// Where a window is to be: content size and position in physical pixels.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -79,6 +85,8 @@ pub struct Launch {
     pub placement: Option<Placement>,
     pub reuse: bool,
     pub annotate: bool,
+    /// What the caller calls this document (see the module's `--id`).
+    pub id: Option<String>,
 }
 
 impl Launch {
@@ -91,6 +99,7 @@ impl Launch {
                 "--geometry" => launch.placement = args.next().and_then(|v| Placement::parse(&v)),
                 "--reuse" => launch.reuse = true,
                 "--annotate" => launch.annotate = true,
+                "--id" => launch.id = args.next().filter(|v| !v.is_empty()),
                 "-" if launch.file.is_none() => launch.file = Some(arg),
                 flag if WITH_VALUE.contains(&flag) => drop(args.next()),
                 flag if flag.starts_with('-') => {}
@@ -105,6 +114,8 @@ impl Launch {
 static LAUNCH: OnceLock<Launch> = OnceLock::new();
 /// The line to show in the file that is opened next.
 static LINE: Mutex<Option<u32>> = Mutex::new(None);
+/// The id the call that opened the current document gave it (`--id`).
+static DOC_ID: Mutex<Option<String>> = Mutex::new(None);
 /// The file standard input was written to, to be removed on exit.
 static STDIN_FILE: Mutex<Option<PathBuf>> = Mutex::new(None);
 /// The files the app may annotate: given with `--annotate`, by this call or a later one (`--reuse`).
@@ -145,6 +156,9 @@ struct Handover {
     /// Missing from older viewers: read-only, as they were.
     #[serde(default)]
     annotate: bool,
+    /// Missing from older viewers: no id.
+    #[serde(default)]
+    id: Option<String>,
 }
 
 /// The app's own directory for what lives only while it runs.
@@ -222,6 +236,7 @@ pub(crate) fn init(info: &AppInfo) -> bool {
                 .placement
                 .map(|p| (p.size.map(|s| (s.width, s.height)), p.position.map(|p| (p.x, p.y)))),
             annotate: launch.annotate && from_stdin.is_none(),
+            id: launch.id.clone(),
         };
         if let Ok(message) = serde_json::to_string(&handover)
             && writeln!(running, "{message}").is_ok()
@@ -236,6 +251,7 @@ pub(crate) fn init(info: &AppInfo) -> bool {
         set_annotate(Path::new(file), launch.annotate);
     }
     *STDIN_FILE.lock().unwrap() = from_stdin;
+    *DOC_ID.lock().unwrap() = launch.id.clone();
     *LINE.lock().unwrap() = launch.line;
     let _ = LAUNCH.set(launch);
     false
@@ -265,6 +281,7 @@ pub(crate) fn listen(app: &AppHandle, info: &AppInfo) {
             }
             let Ok(handover) = serde_json::from_str::<Handover>(&message) else { continue };
             *LINE.lock().unwrap() = handover.line;
+            *DOC_ID.lock().unwrap() = handover.id.clone();
             if let Some(file) = handover.file.as_deref() {
                 set_annotate(Path::new(file), handover.annotate);
             }
@@ -299,6 +316,13 @@ pub(crate) fn clean_up(info: &AppInfo) {
     }
 }
 
+/// What the call that opened the current document named it (`--id`), if it did. Not taken: the
+/// frontend asks once per document it opens.
+#[tauri::command]
+pub fn doc_id() -> Option<String> {
+    DOC_ID.lock().unwrap().clone()
+}
+
 /// The line to show in the file just opened, once.
 #[tauri::command]
 pub fn take_line() -> Option<u32> {
@@ -325,6 +349,10 @@ mod tests {
         assert_eq!(launch(&["--register-default"]).file, None);
         assert_eq!(launch(&["a", "--line", "x"]).line, None);
         assert_eq!(launch(&["a", "--line", "0"]).line, None);
+        assert_eq!(launch(&["-", "--id", "round 7", "--reuse"]).id.as_deref(), Some("round 7"));
+        assert_eq!(launch(&["--id", "x", "a.patch"]).file.as_deref(), Some("a.patch"), "the id is not the file");
+        assert_eq!(launch(&["a.patch", "--id", ""]).id, None);
+        assert_eq!(launch(&["a.patch"]).id, None);
         assert!(launch(&["--annotate", "a.md"]).annotate);
         assert!(!launch(&["a.md"]).annotate);
         assert_eq!(launch(&["--annotate", "a.md"]).file.as_deref(), Some("a.md"));
@@ -353,6 +381,9 @@ mod tests {
     fn a_handover_from_an_older_viewer_is_read_only() {
         let old: Handover = serde_json::from_str(r#"{"file":"a.md","line":null,"geometry":null}"#).unwrap();
         assert!(!old.annotate);
+        assert_eq!(old.id, None, "an older viewer names no document");
+        let new: Handover = serde_json::from_str(r#"{"file":"a.patch","line":null,"geometry":null,"id":"round 7"}"#).unwrap();
+        assert_eq!(new.id.as_deref(), Some("round 7"));
     }
 
     #[test]

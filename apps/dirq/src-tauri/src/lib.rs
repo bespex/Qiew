@@ -34,7 +34,10 @@ static INFO: AppInfo = AppInfo {
         "Exports the view as one HTML file.",
     ],
     usage: &["git diff | dirq -"],
-    options: &[],
+    options: &[(
+        "--id <text>",
+        "name the document: the same text means a new version of the one shown before (kept: scroll position, folded files, filter), another text a different document. Put it after the file or `-`.",
+    )],
 };
 
 /// Reads a file and starts watching it for changes.
@@ -101,7 +104,8 @@ pub fn run() {
             qiew_frame::about::open_about_link,
             qiew_frame::export::export_info,
             qiew_frame::export::export_file,
-            qiew_frame::launch::take_line
+            qiew_frame::launch::take_line,
+            qiew_frame::launch::doc_id
         ])
         .setup(|app| {
             qiew_frame::setup(app, &INFO);

@@ -20,6 +20,7 @@ Dokumentation nach dessen Abschnitt 8 stehen.
 | Aufblitzen („neu seit eben“) | **Ja, ohne Freigabe**, bei jedem Live-Reload. Es zeigt nur. |
 | Rückkanal von CodeDeck | Nein, vorerst. |
 | Session im Patch-Kopf (`X-CodeDeck-Session`) | **Ja**, optional; Dirq sendet sie als Feld `session` mit. Siehe `docs/ANNOTATE.md`, Abschnitt 5. |
+| „Dasselbe Dokument“ | **Der Aufrufer sagt es: `--id <text>`** (CodeDeck: z. B. „Runde 7 · Projekt“); gleiche Kennung = neue Fassung, Zustand bleibt. Ohne Kennung: Pfad, sonst Betreffzeile, sonst Dateimenge. Kein Anlegen von Dateien durch CodeDeck. Im Rahmen gebaut (`launch.rs`, `Handover.id`, `doc_id`). Siehe `docs/ANNOTATE.md`, Abschnitt 3, Punkt 5. |
 | Dokumentation von `--annotate` | **Ausführlich und Teil jeder Phase**: `--help`, README von Dirq, Qiew-README („Working with CodeDeck“), Beschreibung in CodeDeck. Siehe `docs/ANNOTATE.md`, Abschnitte 1 und 8. |
 
 ## Reihenfolge nach Nutzen und Aufwand
@@ -32,7 +33,7 @@ dann das Live-Review, dann die Kommentare, danach alles, was Git oder CodeDeck s
 | 1 | Schneller lesen: Generiertes zuklappen, Dateiliste filtern, Gliederung aus Hunk-Köpfen | 4 | 1–2 | nein |
 | 2 | Syntaxhervorhebung | 5 | 3 | nein |
 | 3 | Gesten: Tasten, Sprungverlauf, Hilfe | 4 | 2 | nein |
-| 4 | Live-Review: stabil bleiben, Aufblitzen, Randleiste | 5 | 2–3 | Schalter „Live in Dirq“ (klein) |
+| 4 | Live-Review: stabil bleiben, Aufblitzen, Randleiste | 5 | 2–3 | Schalter „Live in Dirq“ (klein), `--id` beim Aufruf |
 | 5 | Kommentare für die KI | 5 | 3 | ja: Annahme im Hub, Anzeige als Zeilenkommentar |
 | 6 | Mehr Kontext aus dem Repository | 4 | 3 | ja: `--repo` (ein Parameter) |
 | 7 | Verschobener Code | 4 | 3 | nein |
@@ -117,8 +118,9 @@ Hunk-Rand hinweg bleibt farbig, die geänderten Wörter sind weiterhin sichtbar 
 
 **CodeDeck-Folge (klein)**
 
-- Schalter „Live in Dirq“ an der laufenden Runde: bei jeder Änderung, entprellt, `dirq - --reuse` mit dem neuen Patch
-  (`src-tauri/src/apps.rs`, `src/dirq.ts`).
+- Schalter „Live in Dirq“ an der laufenden Runde: bei jeder Änderung, entprellt, `dirq - --reuse --id <Kennung>` mit dem
+  neuen Patch (`src-tauri/src/apps.rs`, `src/dirq.ts`). Die Kennung bleibt für die Runde gleich (z. B. „Runde 7 · Projekt“),
+  eine neue Runde bekommt eine neue; `--id` steht **nach** `-`.
 
 **Abnahme:** Läuft eine Runde, springt das Fenster nicht, aufgeklappte Dateien bleiben offen, Neues blitzt auf und lässt
 sich in der Randleiste finden. Ohne CodeDeck: dasselbe bei Live-Reload einer Patch-Datei.
@@ -138,6 +140,11 @@ sich in der Randleiste finden. Ohne CodeDeck: dasselbe bei Live-Reload einer Pat
   Seite und Fehlerverhalten stehen in `docs/ANNOTATE.md`, Abschnitt 4 (nicht hier wiederholen, damit nichts auseinanderläuft).
   Kurz: `line` ist die Zeile der **neuen** Seite, bei einer gelöschten Zeile die der nächsten dahinter, der `code` beginnt dann
   mit `(gelöschte Zeile) `. Dirq vergibt die `id`; Bearbeiten = entfernen + neu senden.
+- **Voraussetzung im Rahmen (Stand 2026-11-21, am Code gesehen):** `launch.rs` schließt Standardeingabe von `--annotate`
+  aus (`annotate && from_stdin.is_none()`, und `set_annotate` nur für Dateien). Für Marq stimmt das (es schreibt in die Datei),
+  für Dirq nicht: CodeDeck liefert den Patch **nur** über Standardeingabe, und Dirq sendet bloß. Die Ausnahme muss je App
+  steuerbar werden (Vorschlag: ein Feld in `AppInfo`, z. B. `annotate_stdin`), **mit der Marq-Session abstimmen**, da der
+  Rahmen beiden gehört. Ohne das wirkt `--annotate` bei CodeDeck nie.
 - **Freigaben reisen mit `--reuse`:** `Handover` in `crates/frame/src/launch.rs` bekommt `annotate`, `codedeck_socket` und
   `repo` (siehe `docs/ANNOTATE.md`, Abschnitt 3). Ohne das gilt die Freigabe nur beim ersten Start eines Fensters und der
   Socket-Pfad wäre nach einem Neustart von CodeDeck tot. **Das ist die Stelle, die man am leichtesten vergisst.**
@@ -220,7 +227,7 @@ Dirq ist in jeder Phase allein lauffähig. Diese Änderungen in CodeDeck (`src-t
 
 | Wann | Änderung in CodeDeck | Umfang |
 |---|---|---|
-| Phase 4 | Schalter „Live in Dirq“ an der laufenden Runde, `dirq - --reuse` bei jeder Änderung, entprellt | klein |
+| Phase 4 | Schalter „Live in Dirq“ an der laufenden Runde, `dirq - --reuse --id <Kennung der Runde>` bei jeder Änderung, entprellt | klein |
 | Phase 5 | Hub nimmt `line_comment` / `line_comment_remove` an und prüft sie | klein–mittel |
 | Phase 5 | `notes.ts` legt eingehende Kommentare als `Note` an, entfernt sie über die `id` | klein |
 | Phase 5 | Start von Dirq mit `--annotate` und `CODEDECK_SOCKET`, nur für Patches, die zum Arbeitsordner passen | klein |
@@ -276,5 +283,5 @@ Rahmenbausteine; **gehört auch der Marq-Session, nicht ändern**), 5. `apps/dir
 Paket des Rahmens (Namen in `crates/frame/Cargo.toml`).
 
 **Was nicht in diesem Plan steht, aber vor Phase 5 mit dem Nutzer zu klären ist:** keine offenen Fragen mehr; die
-Festlegungen stehen oben in „Entscheidungen“. Offen bis zum Bauen von Phase 4 ist nur, wann zwei Stände „dasselbe Dokument“
-sind (`docs/ANNOTATE.md`, Abschnitt 3, Punkt 5).
+Festlegungen stehen oben in „Entscheidungen“. Entschieden ist auch, wann zwei Stände „dasselbe Dokument“ sind (`--id`,
+`docs/ANNOTATE.md`, Abschnitt 3, Punkt 5). Offen ist vor Phase 5 nur die Stdin-Ausnahme im Rahmen (siehe dort).

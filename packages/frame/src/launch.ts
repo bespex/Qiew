@@ -28,6 +28,12 @@ export async function revealLaunchLine(reveal: (line: number) => void) {
   if (line) reveal(line);
 }
 
+/**
+ * What the call that opened the current document named it (`--id`), or null. Ask once per
+ * document opened; each `--reuse` call replaces it.
+ */
+export const launchDocId = () => invoke<string | null>("doc_id").catch(() => null);
+
 /** A running viewer may be asked for a line of the file it already shows. */
 export function onRevealRequest(reveal: (line: number) => void) {
   listen("reveal-line", () => revealLaunchLine(reveal));

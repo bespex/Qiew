@@ -1,6 +1,6 @@
 # Die Freigaben `--annotate`, `--repo` und `CODEDECK_SOCKET`: Spezifikation
 
-Stand 2026-11-21. Entwurf, **nichts davon ist gebaut.** Diese Datei ist die verbindliche Beschreibung der Parameter, mit
+Stand 2026-11-21. Entwurf, **gebaut ist bisher nur `--id` (Abschnitt 3, Punkt 5).** Diese Datei ist die verbindliche Beschreibung der Parameter, mit
 denen CodeDeck einem Betrachter etwas erlaubt, das er sonst nicht tut. Sie ist so geschrieben, dass eine Session ohne
 Vorwissen daraus bauen, testen und dokumentieren kann. Wo `apps/dirq/PLAN.md`, `apps/dirq/IDEEN.md` oder
 `docs/BEDIENKONZEPT.md` etwas anderes sagen, **gilt diese Datei**.
@@ -84,7 +84,8 @@ das Dokument über einen Unix-Socket (`crates/frame/src/launch.rs`: `Handover`, 
 Daraus folgt:
 
 1. **Die Freigaben müssen in die `Handover`-Nachricht.** Heute enthält sie nur `file`, `line` und `geometry`. Zu ergänzen
-   (mit `#[serde(default)]`, damit alte Fenster neue Nachrichten und umgekehrt verstehen):
+   (mit `#[serde(default)]`, damit alte Fenster neue Nachrichten und umgekehrt verstehen; **`annotate` und `id` sind bereits
+   gebaut**, `codedeck_socket` und `repo` fehlen noch):
 
    ```rust
    struct Handover {
@@ -106,9 +107,16 @@ Daraus folgt:
 4. **Beim Wechsel zu einem anderen Dokument werden die Karten verworfen** (sie liegen weiter beim Empfänger). Beim
    Neuladen **desselben** Dokuments (Live-Reload einer Datei, oder CodeDeck schickt dieselbe Runde noch einmal) bleiben sie
    (Phase 4/5, Wiederfinden über den Zeilentext).
-5. **Wann ist es „dasselbe Dokument“?** Bei einer Datei: derselbe Pfad. Bei Standardeingabe gibt es keinen Pfad. Vorschlag:
-   dasselbe Dokument, wenn die Betreffzeile im Kopf (`Subject:`, bei CodeDeck „Runde N · Titel · Projekt“) gleich ist;
-   ohne Kopf, wenn die Menge der Dateipfade gleich ist. **Beim Bauen von Phase 4 bestätigen oder ändern.**
+5. **Wann ist es „dasselbe Dokument“? Entschieden (2026-11-21): der Aufrufer sagt es, mit `--id <text>`.** Bei einer Datei
+   genügt der Pfad. Bei Standardeingabe gibt es keinen: der Rahmen legt sie unter einem neuen Namen ab
+   (`stdin-<pid>.patch`), jeder Aufruf hätte also einen anderen. Darum nennt CodeDeck eine Kennung
+   (`dirq - --reuse --id <text>`), z. B. „Runde 7 · Projekt“. **Gleiche Kennung = neue Fassung desselben Dokuments**:
+   Scrollposition, Faltungen, Filter und Karten bleiben, das Aufblitzen vergleicht mit dem vorigen Stand. **Andere Kennung
+   = anderes Dokument**: alles beginnt neu. Eine neue Runde bekommt also eine neue Kennung. Ohne `--id` gilt: bei einer
+   Datei der Pfad, bei Standardeingabe die Betreffzeile des Kopfes, ohne Kopf die Menge der Dateipfade. (Das ist nur der
+   Notbehelf für `git diff | dirq -` von Hand; im Zweifel eher „dasselbe“, denn der Fehler ist harmlos: es blitzt etwas zu
+   viel auf, eine Karte wird gedämpft.) Jeder Aufruf ersetzt die Kennung des vorigen; sie reist in der `Handover`-Nachricht
+   (`id`, mit `#[serde(default)]`) und liegt im Rahmen: `launch::doc_id`, `launchDocId()`.
 
 Eine neue `--reuse`-Übergabe an ein Fenster **ohne** diese Felder (älteres Dirq) lässt die Felder weg; dann gilt `false`/`None`.
 Ein älteres Fenster ignoriert unbekannte Felder (`serde` ohne `deny_unknown_fields`, so ist es heute).
@@ -188,6 +196,9 @@ in CodeDeck. Das ist die **einzige** Information, die über den Kopf von CodeDec
 
 ## 7. Verträglichkeit mit älteren Fassungen
 
+(`--id <text>` ist keine Freigabe, sondern eine Benennung; für sie gilt dasselbe wie unten: ein älteres Dirq ignoriert sie
+still, es merkt sich dann nur das Live-Review nicht über einen Reload hinaus. Auch `--id` steht **nach** `-`.)
+
 Geprüft am Code (`crates/frame/src/launch.rs`, `Launch::parse`): **Unbekannte Optionen werden still ignoriert** (jede Option mit
 `-` am Anfang). Ein Dirq ohne dieses Feature bricht bei `--annotate` also nicht ab, sondern zeigt **kein „+“**, ohne Hinweis.
 Der Nutzer würde nicht merken, dass etwas fehlt.
@@ -250,7 +261,9 @@ prüfen):
 - Nachricht aus einem Kommentar zusammenbauen: neue Zeile, Kontextzeile, gelöschte Zeile (mitten in der Datei, am Ende), Text
   mit Umbruch, Anführungszeichen, Umlauten, 10 000 Zeichen; Ausgabe ist **eine** Zeile gültiges JSON.
 - Wiederfinden über den Zeilentext: Zeile unverändert, verschoben, entfallen.
-- „Dasselbe Dokument“ (Abschnitt 3, Punkt 5): gleiche und verschiedene Betreffzeile, ohne Kopf.
+- `--id`: gelesen mit und ohne Wert, steht nach `-`, wird nicht zur Datei, leerer Wert zählt nicht (gebaut: `Launch::parse`,
+  `Handover`).
+- „Dasselbe Dokument“ (Abschnitt 3, Punkt 5): gleiche und verschiedene Kennung; ohne Kennung Pfad, Betreffzeile, Dateimenge.
 
 Von Hand (jeweils mit `example.patch` und einem Patch mit Kopf von CodeDeck):
 
