@@ -146,7 +146,9 @@ the be spex viewers in its list.
 ## Release
 
 Each app has its own version and its own tag. Bump the version in `apps/<app>/package.json`,
-`apps/<app>/src-tauri/tauri.conf.json` and `apps/<app>/src-tauri/Cargo.toml`, commit, then
+`apps/<app>/src-tauri/tauri.conf.json` and `apps/<app>/src-tauri/Cargo.toml`, write the release notes into
+`apps/<app>/release-notes/<version>.md` (they become the text of the GitHub release; without the file the release has
+none), commit, then
 
 ```sh
 git tag xaq-v<version> && git push origin xaq-v<version>

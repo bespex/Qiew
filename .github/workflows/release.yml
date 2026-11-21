@@ -6,6 +6,8 @@ name: Release
 # A tag <app>-v<version> (e.g. xaq-v0.3.1) publishes them as a release and
 # puts the AppImage updater's manifest as <app>.json into the release
 # "updater", which is where the installed AppImages look for updates.
+# The text of the release comes from apps/<app>/release-notes/<version>.md, if
+# that file is in the tagged commit (without it the release has no text).
 # workflow_dispatch only builds (artifacts, no release).
 on:
   push:
@@ -41,10 +43,16 @@ jobs:
             echo "Tag $GITHUB_REF_NAME does not match version $version in $conf" >&2
             exit 1
           fi
+          notes=apps/$app/release-notes/$version.md
+          if [ ! -f "$notes" ]; then
+            [ "$GITHUB_REF_TYPE" = tag ] && echo "::warning::No release notes: $notes does not exist, the release gets no text"
+            notes=
+          fi
           {
             echo "app=$app"
             echo "version=$version"
             echo "name=$(jq -r .productName "$conf")"
+            echo "notes=$notes"
           } >> "$GITHUB_OUTPUT"
 
       - name: Install build dependencies
@@ -109,6 +117,7 @@ jobs:
         uses: softprops/action-gh-release@v3
         with:
           name: ${{ steps.app.outputs.name }} ${{ steps.app.outputs.version }}
+          body_path: ${{ steps.app.outputs.notes }}
           files: dist-release/*
 
       # The updater endpoint of each app is a fixed URL:
