@@ -11,6 +11,7 @@
  * rendering, from the comments' own html_block tokens (DOMPurify would remove the comments).
  */
 import type MarkdownIt from "markdown-it";
+import { esc, noteAction, noteHtml } from "@qiew/frame/annotate";
 import { COMMENT_TYPE_INFO, bodyStart, parseComment, type BlockRef, type CommentType, type Status } from "./annotate";
 
 type Token = ReturnType<InstanceType<typeof MarkdownIt>["parse"]>[number];
@@ -23,8 +24,7 @@ interface Note {
   line: number;
 }
 
-export const esc = (s: string) =>
-  s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+export { esc };
 export const colour = (type: CommentType) => `color-mix(in oklab, ${COMMENT_TYPE_INFO[type].colour} 70%, var(--fg))`;
 
 function noteOf(tok: Token): Note | null {
@@ -63,7 +63,7 @@ export function installNotes(md: InstanceType<typeof MarkdownIt>) {
   md.renderer.rules.marq_notes = (tokens, idx) => {
     const { notes, target } = tokens[idx].meta as { notes: Note[]; target: BlockRef | null };
     const open = notes.filter((n) => !n.status).length;
-    const label = `${notes.length === 1 ? "1 Kommentar" : `${notes.length} Kommentare`}${open < notes.length ? `, ${open} offen` : ""}`;
+    const label = `${notes.length === 1 ? "1 comment" : `${notes.length} comments`}${open < notes.length ? `, ${open} open` : ""}`;
     const dots = notes
       .map((n) => `<span class="note-dot${n.status ? " done" : ""}" style="--note: ${colour(n.type)}"></span>`)
       .join("");
@@ -109,43 +109,29 @@ let pinned = false;
 /** After a change of our own: the card to open again once the page is rendered anew. */
 let reopen: BlockRef | null = null;
 
-const ICON = {
-  tick: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>`,
-  open: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12a8 8 0 1 0 2.3-5.6M4 4v4h4"/></svg>`,
-  edit: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16zM14 6l4 4"/></svg>`,
-  remove: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M10 7V4h4v3M7 7l1 13h8l1-13"/></svg>`,
-};
-
 function cardHtml(group: HTMLElement): string {
   const notes = JSON.parse(group.dataset.notes ?? "[]") as Note[];
   const allowed = actions?.allowed() ?? "no";
-  const head = group.classList.contains("orphan")
-    ? `<div class="note-orphan">Ohne Bezug: Auf diese Kommentare folgt kein Block.</div>`
-    : "";
+  const head = group.classList.contains("orphan") ? `<div class="note-orphan">No block follows these comments.</div>` : "";
+  // Each comment is the frame's note, as in Dirq; its id is its first line in the file
   const rows = notes
-    .map((n) => {
-      const info = COMMENT_TYPE_INFO[n.type];
-      const status = n.status ? `<span class="note-status">${esc(n.status)}</span>` : "";
-      const tools =
-        allowed === "yes"
-          ? `<span class="note-tools">` +
-            `<button type="button" data-act="tick" data-line="${n.line}" title="${n.status ? "Wieder öffnen" : "Abhaken"}">${n.status ? ICON.open : ICON.tick}</button>` +
-            `<button type="button" data-act="edit" data-line="${n.line}" title="Bearbeiten">${ICON.edit}</button>` +
-            `<button type="button" data-act="remove" data-line="${n.line}" title="Löschen">${ICON.remove}</button>` +
-            `</span>`
-          : "";
-      return (
-        `<div class="note${n.status ? " done" : ""}" style="--note: ${colour(n.type)}">` +
-        `<div class="note-head"><span class="note-type" title="${esc(info.title)}">@${n.type}</span>${status}${tools}</div>` +
-        `<div class="note-text">${esc(n.text)}</div></div>`
-      );
-    })
+    .map((n) =>
+      noteHtml({
+        id: String(n.line),
+        text: n.text,
+        colour: colour(n.type),
+        label: `@${n.type}`,
+        badges: n.status ? [{ text: n.status }] : [],
+        done: !!n.status,
+        tools: allowed === "yes" ? [n.status ? "reopen" : "tick", "edit", "remove"] : [],
+      }),
+    )
     .join("");
   const foot =
     allowed === "yes" && !group.classList.contains("orphan")
-      ? `<div class="note-foot"><button type="button" data-act="add" title="Kommentar hinzufügen (Strg+Alt+M)">+ Kommentar</button></div>`
+      ? `<div class="note-foot"><button type="button" data-act="add" title="Add a comment (Ctrl+Alt+M)">+ Comment</button></div>`
       : allowed === "read-only"
-        ? `<div class="note-foot note-hint">Die Datei ist schreibgeschützt.</div>`
+        ? `<div class="note-foot note-hint">The file is read-only.</div>`
         : "";
   return head + rows + foot + `<div class="note-error" hidden></div>`;
 }
@@ -205,10 +191,10 @@ export function openNotes(group: HTMLElement) {
   pin(group);
 }
 
-async function act(button: HTMLButtonElement) {
+/** What a button in the card asks for: a note's tool (frame), or adding one to the block. */
+async function act(act: string, line: number) {
   const group = shownFor;
   if (!group || !actions || !card) return;
-  const line = Number(button.dataset.line);
   const errorBox = card.querySelector<HTMLElement>(".note-error")!;
   const fail = (err: unknown) => {
     errorBox.hidden = false;
@@ -216,23 +202,18 @@ async function act(button: HTMLButtonElement) {
   };
   const notes = JSON.parse(group.dataset.notes ?? "[]") as Note[];
   const note = notes.find((n) => n.line === line);
-  switch (button.dataset.act) {
+  switch (act) {
     case "add":
       return actions.add(group);
     case "edit":
       if (note) actions.edit(group, line, note.type, note.text);
       return;
     case "remove":
-      // Deleting cannot be undone here: the first click asks.
-      if (!button.classList.contains("confirm")) {
-        button.classList.add("confirm");
-        button.title = "Wirklich löschen? Noch einmal klicken";
-        window.setTimeout(() => button.isConnected && button.classList.remove("confirm"), 3000);
-        return;
-      }
+      // The frame asked first (the first click on the bin only turns it red)
       reopen = notes.length > 1 ? targetOf(group) : null;
       return actions.remove(line).catch((e) => ((reopen = null), fail(e)));
     case "tick":
+    case "reopen":
       reopen = targetOf(group);
       return actions.tick(line, !note?.status).catch((e) => ((reopen = null), fail(e)));
   }
@@ -263,7 +244,11 @@ export function initNotes(doc: HTMLElement) {
       e.stopPropagation();
       pinned = true;
       shownFor?.classList.add("pinned");
-      act(button);
+      if (button.dataset.act === "add") void act("add", -1);
+      else {
+        const asked = noteAction(e);
+        if (asked) void act(asked.act, Number(asked.id));
+      }
       return;
     }
     const group = t.closest<HTMLElement>(".notes");
@@ -276,6 +261,6 @@ export function initNotes(doc: HTMLElement) {
     }
   });
   document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape" && card && !(e.target as Element).closest?.(".input-card")) hide();
+    if (e.key === "Escape" && card && !(e.target as Element).closest?.(".qa-input")) hide();
   });
 }

@@ -11,11 +11,10 @@
  * the file while one types) renders the page anew but keeps what was typed; the card then finds
  * its block again.
  *
- * The concept wants margin button and input card in the shared frame, for Dirq as well; they move
- * there when Dirq gets them.
+ * Margin button and input card are the frame's (@qiew/frame/annotate), the same as in Dirq; here is
+ * only where they go and what saving does.
  */
 import {
-  AnnotateError,
   COMMENT_TYPES,
   COMMENT_TYPE_INFO,
   annotatableBlocks,
@@ -23,7 +22,8 @@ import {
   type BlockRef,
   type CommentType,
 } from "./annotate";
-import { colour, esc, openNotes, resetNotes, setNoteActions, targetOf } from "./notes";
+import { inputCard, marginButton } from "@qiew/frame/annotate";
+import { colour, openNotes, resetNotes, setNoteActions, targetOf } from "./notes";
 import { addComment, changeComment, removeComment, tickComment } from "./write";
 
 /** What the page tells about the document shown. */
@@ -127,13 +127,11 @@ function column() {
 
 // ---- The margin button ------------------------------------------------------------------------
 
-const plus = document.createElement("button");
-plus.type = "button";
-plus.className = "margin-add";
-plus.title = "Kommentar hinzufügen (Strg+Alt+M)";
-plus.setAttribute("aria-label", "Kommentar hinzufügen");
-plus.textContent = "+";
-plus.hidden = true;
+const plus = marginButton({
+  layer,
+  title: "Add a comment",
+  onClick: () => plusFor && openInput({ block: plusFor.ref, anchor: plusFor.el }),
+});
 /** A thin line beside the block the "+" belongs to. */
 const bar = document.createElement("div");
 bar.className = "margin-bar";
@@ -148,9 +146,7 @@ function showPlus(b: { ref: BlockRef; el: HTMLElement }) {
   plusFor = b;
   const marks = marksOf(b.el);
   const top = marks ? box(marks).bottom + 2 : box(b.el).top + 2;
-  plus.style.top = `${top}px`;
-  plus.style.left = `${column().gutter + 12}px`;
-  plus.hidden = false;
+  plus.show(b.el, { top, left: column().gutter + 12 });
   const b2 = box(b.el);
   bar.style.top = `${b2.top}px`;
   bar.style.height = `${b2.bottom - b2.top}px`;
@@ -162,7 +158,7 @@ function hidePlus(later = false) {
   clearTimeout(hideTimer);
   if (later) hideTimer = window.setTimeout(() => hidePlus(), 300);
   else {
-    plus.hidden = true;
+    plus.hide();
     bar.hidden = true;
     plusFor = null;
   }
@@ -204,75 +200,35 @@ function openInput(opts: { block: BlockRef | null; anchor: HTMLElement; line?: n
   hidePlus();
   resetNotes();
   const editing = opts.line !== undefined;
-  let type = opts.type ?? lastType;
-  const el = document.createElement("div");
-  el.className = "input-card";
-  const chips = COMMENT_TYPES.map(
-    (t) =>
-      `<button type="button" class="chip" data-type="${t}" style="--note: ${colour(t)}" title="${esc(COMMENT_TYPE_INFO[t].title)}"` +
-      `${editing && t !== type ? " disabled" : ""}>@${t}</button>`,
-  ).join("");
-  el.innerHTML =
-    `<div class="input-chips" role="radiogroup" aria-label="Typ">${chips}</div>` +
-    `<textarea rows="3" placeholder="${editing ? "Kommentar ändern" : "Kommentar"} …" aria-label="Kommentar"></textarea>` +
-    `<div class="input-error" hidden></div>` +
-    `<div class="input-actions"><span class="input-keys">Strg+Enter speichert, Esc bricht ab</span>` +
-    `<button type="button" data-do="cancel">Abbrechen</button><button type="button" data-do="save" class="primary">Speichern</button></div>`;
-  const area = el.querySelector("textarea")!;
-  area.value = opts.text ?? "";
-  const setType = (t: CommentType) => {
-    type = t;
-    el.style.setProperty("--note", colour(t));
-    el.querySelectorAll<HTMLElement>(".chip").forEach((c) => c.setAttribute("aria-checked", String(c.dataset.type === t)));
-  };
-  setType(type);
-  el.addEventListener("click", (e) => {
-    const b = (e.target as Element).closest<HTMLButtonElement>("button");
-    if (!b || b.disabled) return;
-    if (b.dataset.type) {
-      setType(b.dataset.type as CommentType);
-      area.focus();
-    } else if (b.dataset.do === "cancel") closeInput();
-    else if (b.dataset.do === "save") save();
-  });
-  area.addEventListener("keydown", (e) => {
-    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
-      e.preventDefault();
-      save();
-    } else if (e.key === "Escape") {
-      e.preventDefault();
-      e.stopPropagation();
-      closeInput();
-    }
-  });
-
-  const me: Input = { el, seen: doc.content, block: opts.block, line: opts.line ?? null, anchor: opts.anchor };
-  input = me;
-  async function save() {
-    const text = area.value.trim();
-    const now = shown();
-    if (!now || !text) return area.focus();
-    const error = el.querySelector<HTMLElement>(".input-error")!;
-    el.classList.add("busy");
-    try {
+  let me: Input;
+  const card = inputCard({
+    text: opts.text,
+    placeholder: `${editing ? "Change the comment" : "A comment"} …`,
+    hint: "Ctrl+Enter saves, Esc cancels",
+    submit: "Save",
+    // A comment keeps its type when changed: only that chip is offered then
+    chips: COMMENT_TYPES.map((t) => ({ id: t, label: `@${t}`, colour: colour(t), title: COMMENT_TYPE_INFO[t].title })),
+    chip: opts.type ?? lastType,
+    lockChip: editing,
+    onCancel: () => closeInput(),
+    onSubmit: async (text, chip) => {
+      const now = shown();
+      if (!now) return;
+      const type = (chip ?? lastType) as CommentType;
       const content =
-        me.line !== null
-          ? await changeComment(now.path, me.seen, me.line, text)
-          : await addComment(now.path, me.seen, me.block!, type, text);
+        me.line !== null ? await changeComment(now.path, me.seen, me.line, text) : await addComment(now.path, me.seen, me.block!, type, text);
       if (me.line === null) lastType = type;
       if (input === me) closeInput();
       written(content);
-    } catch (err) {
-      el.classList.remove("busy");
-      error.hidden = false;
-      error.textContent = err instanceof AnnotateError || err instanceof Error ? err.message : String(err);
-    }
-  }
-
-  layer.appendChild(el);
+    },
+  });
+  card.el.classList.add("input-card");
+  me = { el: card.el, seen: doc.content, block: opts.block, line: opts.line ?? null, anchor: opts.anchor };
+  input = me;
+  layer.appendChild(card.el);
   placeInput();
-  area.focus();
-  el.scrollIntoView({ block: "nearest" });
+  card.focus();
+  card.el.scrollIntoView({ block: "nearest" });
 }
 
 /** After the page was rendered anew: the card stays and finds its block again. */
@@ -326,29 +282,31 @@ export function initAnnotate(doc: HTMLElement, current: () => Shown | null, onWr
   shown = current;
   written = onWritten;
   document.body.appendChild(layer);
-  layer.append(bar, plus);
+  layer.prepend(bar);
 
   article.addEventListener("mousemove", (e) => {
     if (allowed() !== "yes") return;
     const t = e.target as Element;
-    if (t === article) return clearTimeout(hideTimer); // the margin: keep the button for the way to it
+    if (t === article) {
+      // The margin: keep the button for the way to it
+      clearTimeout(hideTimer);
+      if (plusFor) showPlus(plusFor);
+      return;
+    }
     if (t.closest(".notes, .note-card")) return hidePlus(); // the marks have their own card
     const b = blockOf(t);
     if (b) {
       pointed = b;
-      if (plusFor?.el !== b.el) showPlus(b);
-      else clearTimeout(hideTimer);
+      showPlus(b);
     }
   });
   article.addEventListener("mouseleave", (e) => {
-    if (e.relatedTarget !== plus) hidePlus(true);
+    if (e.relatedTarget !== plus.el) hidePlus(true);
   });
-  plus.addEventListener("mouseenter", () => clearTimeout(hideTimer));
-  plus.addEventListener("mouseleave", (e) => {
+  // The frame hides the button itself when the pointer leaves it; the line beside the block goes too
+  plus.el.addEventListener("mouseenter", () => clearTimeout(hideTimer));
+  plus.el.addEventListener("mouseleave", (e) => {
     if (!article.contains(e.relatedTarget as Node)) hidePlus(true);
-  });
-  plus.addEventListener("click", () => {
-    if (plusFor) openInput({ block: plusFor.ref, anchor: plusFor.el });
   });
 
   setNoteActions({

@@ -26,6 +26,7 @@ import { type Anchor, anchorOf, findAnchor, freshKey, updateFresh } from "./live
 import { type Comment, type Target, addMessage, fileOf, markdownList, newId, relocate, removeMessage, targetOf } from "./comments";
 import { type Gap, type Opened, blobLines, contextLines, gapsOf, hiddenIn, oldTotalOf, openMore, shownIn } from "./context";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
+import { BUBBLE_ICON, inputCard, marginButton, noteAction, noteHtml, sendComment as sendToCaller, type NoteView } from "@qiew/frame/annotate";
 
 setApp("dirq");
 initToolbar();
@@ -726,7 +727,7 @@ content.addEventListener("click", (e) => {
     target.textContent = open ? "Show more" : "Show less";
     return;
   }
-  if (commentClick(target)) return;
+  if (commentClick(e)) return;
   const more = target.closest<HTMLElement>("[data-more]");
   if (more) return void openGap(more);
   const head = target.closest<HTMLElement>(".file-head");
@@ -868,7 +869,7 @@ function drawRuler() {
       if (freshIn(f) > 0) html += mark(section.querySelector<HTMLElement>(".file-head")!, "new");
       if (commentsIn(f) > 0) html += mark(section.querySelector<HTMLElement>(".file-head")!, "cm");
     });
-    content.querySelectorAll<HTMLElement>(".cm-card").forEach((card) => (html += mark(card, "cm")));
+    content.querySelectorAll<HTMLElement>(".cm-box").forEach((card) => (html += mark(card, "cm")));
     ruler.innerHTML = html;
   });
 }
@@ -949,9 +950,7 @@ function exportHtml(): string {
 // no key. A comment is a message to the program that started Dirq (CODEDECK_SOCKET); Dirq writes
 // nothing and keeps comments only while the document is shown.
 
-const BUBBLE_SVG = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5h14a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1h-8l-4 3.5V16H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1Z" /></svg>`;
-const PEN_SVG = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16v4Z" /><path d="m13.5 6.5 4 4" /></svg>`;
-const BIN_SVG = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M10 7V5h4v2M7 7l1 12h8l1-12" /></svg>`;
+const BUBBLE_SVG = BUBBLE_ICON;
 
 /** Only with --annotate for the document shown. */
 const annotating = () => !!current?.annotate && !!patch;
@@ -1042,7 +1041,7 @@ function goToComment(id: string) {
   const section = content.querySelector<HTMLElement>(`.file[data-i="${at}"]`);
   if (!section) return;
   if (section.classList.contains("collapsed")) toggleFile(section);
-  const card = section.querySelector<HTMLElement>(`.cm-card[data-id="${id}"]`);
+  const card = section.querySelector<HTMLElement>(`.qa-note[data-id="${id}"]`);
   if (!card) return;
   jumpTo(window.scrollY + card.getBoundingClientRect().top - HEAD - (window.innerHeight - HEAD) / 4);
   card.classList.add("launch-line");
@@ -1066,34 +1065,46 @@ const targetOfCell = (cell: Element): Target | null => {
   return r && targetOf(r.f, r.ref.line, r.ref.hunk);
 };
 
-function cardHtml(c: Comment, where: boolean): string {
-  const state =
-    c.state === "sending"
-      ? `<span class="cm-state">sending…</span>`
-      : c.state === "unsent"
-        ? current?.connected
-          ? `<span class="cm-state warn" title="${esc(c.error ?? "")}">not sent <button type="button" data-cm="resend">Send again</button></span>`
-          : `<span class="cm-state">kept here</span>`
-        : "";
-  const lost = c.lost ? `<span class="cm-state">line changed</span>` : "";
-  const error = c.error && c.state === "sent" ? `<div class="cm-error">${esc(c.error)}</div>` : "";
-  return (
-    `<div class="cm-card${c.lost ? " lost" : ""}${c.state === "unsent" ? " unsent" : ""}" data-id="${c.id}">` +
-    `<div class="cm-head"><span class="cm-bubble">${BUBBLE_SVG}</span>` +
-    (where ? `<span class="cm-where">Line ${c.target.line}${c.target.deleted ? " (removed line)" : ""}: <code>${esc(c.target.text.trim().slice(0, 80))}</code></span>` : "") +
-    `${lost}${state}<span class="cm-tools"><button type="button" data-cm="edit" title="Change">${PEN_SVG}</button>` +
-    `<button type="button" data-cm="remove" title="Remove">${BIN_SVG}</button></span></div>` +
-    `<div class="cm-text">${esc(c.text)}</div>${error}</div>`
-  );
+/** A comment as the frame's note: where it is (in the list on top), whether it reached the receiver. */
+function noteOf(c: Comment, where: boolean): string {
+  const badges: NonNullable<NoteView["badges"]> = [];
+  if (c.lost) badges.push({ text: "line changed" });
+  if (c.state === "sending") badges.push({ text: "sending…" });
+  else if (c.state === "unsent")
+    badges.push(current?.connected ? { text: "not sent", warn: true, title: c.error, action: { act: "resend", label: "Send again" } } : { text: "kept here" });
+  const view: NoteView = {
+    id: c.id,
+    text: c.text,
+    where: where ? `Line ${c.target.line}${c.target.deleted ? " (removed)" : ""}: ${c.target.text.trim().slice(0, 80)}` : undefined,
+    badges,
+    lost: c.lost,
+    warn: c.state === "unsent" && !!current?.connected,
+    tools: ["edit", "remove"],
+    error: c.state === "sent" ? c.error : undefined,
+  };
+  return `<div class="cm-box">${noteHtml(view)}</div>`;
 }
 
-function draftHtml(): string {
+/** The card the comment being written is in (the frame's input card). */
+function draftCard(): HTMLElement {
   const sends = !!current?.connected;
-  return (
-    `<div class="cm-input"><textarea rows="3" placeholder="${sends ? "A comment for the assistant" : "A comment"} …" aria-label="Comment"></textarea>` +
-    `<div class="cm-actions"><span class="cm-keys">${sends ? "Sent to the program that started Dirq. " : "Nothing receives it: it stays here. "}Ctrl+Enter, Esc cancels</span>` +
-    `<button type="button" data-cm="cancel">Cancel</button><button type="button" data-cm="send" class="primary">${draft?.editing ? "Change" : sends ? "Send" : "Add"}</button></div></div>`
-  );
+  const card = inputCard({
+    text: draft?.text,
+    placeholder: `${sends ? "A comment for the assistant" : "A comment"} …`,
+    hint: `${sends ? "Sent to the program that started Dirq." : "Nothing receives it: it stays here."} Ctrl+Enter, Esc cancels`,
+    submit: draft?.editing ? "Change" : sends ? "Send" : "Add",
+    onSubmit: (text) => submitDraft(text),
+    onCancel: () => closeDraft(),
+    onInput: (text) => draft && (draft.text = text),
+  });
+  if (focusDraft) {
+    focusDraft = false;
+    requestAnimationFrame(() => {
+      card.focus();
+      card.el.scrollIntoView({ block: "nearest" });
+    });
+  }
+  return card.el;
 }
 
 /** Puts the cards (and the card being written) under their lines; what has no line goes on top of the file. */
@@ -1124,29 +1135,17 @@ function placeComments(section: HTMLElement) {
   for (const c of mine) {
     if (writing?.editing === c.id) continue;
     const tr = !c.lost && rows.get(rowKey(c.target));
-    if (tr) after(tr, cardHtml(c, false), "");
-    else elsewhere.push(cardHtml(c, true));
+    if (tr) after(tr, noteOf(c, false), "");
+    else elsewhere.push(noteOf(c, true));
   }
-  let input: HTMLTextAreaElement | null = null;
-  if (writing) {
-    const tr = rows.get(rowKey(writing.target));
-    if (tr) after(tr, draftHtml(), "cm-draft");
-    else elsewhere.unshift(draftHtml());
-  }
-  if (elsewhere.length) {
+  const tr = writing && rows.get(rowKey(writing.target));
+  if (writing && tr) after(tr, "", "cm-draft");
+  if (elsewhere.length || (writing && !tr)) {
     section.querySelector(".file-body")!.insertAdjacentHTML("afterbegin", `<div class="cm-elsewhere">${elsewhere.join("")}</div>`);
   }
-  input = section.querySelector<HTMLTextAreaElement>(".cm-input textarea");
-  if (input && writing) {
-    input.value = writing.text;
-    input.addEventListener("input", () => draft && (draft.text = input!.value));
-    if (focusDraft) {
-      focusDraft = false;
-      input.focus();
-      input.setSelectionRange(input.value.length, input.value.length);
-      input.closest(".cm-input")!.scrollIntoView({ block: "nearest" });
-    }
-  }
+  // The card being written goes under its line, or on top of the file if the line is not shown
+  const slot = section.querySelector<HTMLElement>(".cm-draft > td") ?? (writing ? section.querySelector<HTMLElement>(".cm-elsewhere") : null);
+  if (writing && slot) slot.prepend(draftCard());
 }
 /** The next placing of the card being written gives it the focus. */
 let focusDraft = false;
@@ -1186,7 +1185,7 @@ async function sendComment(c: Comment) {
   c.state = "sending";
   refreshComments(c.target.file);
   try {
-    await invoke("send_comment", { path: current.path, message: addMessage(c, patch?.meta.session, docId) });
+    await sendToCaller(current.path, addMessage(c, patch?.meta.session, docId));
     c.state = "sent";
     c.error = undefined;
   } catch (err) {
@@ -1204,7 +1203,7 @@ async function removeComment(c: Comment) {
       return refreshComments(c.target.file);
     }
     try {
-      await invoke("send_comment", { path: current.path, message: removeMessage(c, patch?.meta.session, docId) });
+      await sendToCaller(current.path, removeMessage(c, patch?.meta.session, docId));
     } catch (err) {
       c.error = `Could not remove it there: ${err}`;
       return refreshComments(c.target.file);
@@ -1214,10 +1213,8 @@ async function removeComment(c: Comment) {
   refreshComments(c.target.file);
 }
 
-function submitDraft() {
+function submitDraft(text: string) {
   if (!draft) return;
-  const text = draft.text.trim();
-  if (!text) return;
   const editing = draft.editing ? comments.find((c) => c.id === draft!.editing) : undefined;
   let c: Comment;
   if (editing) {
@@ -1232,54 +1229,33 @@ function submitDraft() {
   void sendComment(c);
 }
 
-/** Clicks on the cards and the card being written; true if it was one. */
-function commentClick(target: HTMLElement): boolean {
-  const button = target.closest<HTMLElement>("[data-cm]");
-  if (!button) return !!target.closest(".cm-row, .cm-elsewhere");
-  const what = button.dataset.cm;
-  if (what === "send") submitDraft();
-  else if (what === "cancel") closeDraft();
-  else {
-    const c = comments.find((x) => x.id === button.closest<HTMLElement>(".cm-card")?.dataset.id);
-    if (!c) return true;
-    if (what === "edit") openDraft(c.target, c.text, c.id);
-    else if (what === "remove") void removeComment(c);
-    else if (what === "resend") void sendComment(c);
-  }
+/** Clicks on the notes (the input card handles its own); true if it was inside a comment. */
+function commentClick(e: Event): boolean {
+  const target = e.target as HTMLElement;
+  const action = noteAction(e);
+  if (!action) return !!target.closest(".cm-row, .cm-elsewhere");
+  const c = comments.find((x) => x.id === action.id);
+  if (!c) return true;
+  if (action.act === "edit") openDraft(c.target, c.text, c.id);
+  else if (action.act === "remove") void removeComment(c);
+  else if (action.act === "resend") void sendComment(c);
   return true;
 }
 
-content.addEventListener("keydown", (e) => {
-  if (!(e.target as HTMLElement).matches(".cm-input textarea")) return;
-  if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
-    e.preventDefault();
-    e.stopPropagation();
-    submitDraft();
-  } else if (e.key === "Escape") {
-    e.preventDefault();
-    e.stopPropagation();
-    closeDraft();
-  }
+/** The "+" in the margin (the frame's): pointing at a line shows it; a click opens the card under the line. */
+const plus = marginButton({
+  layer: document.body,
+  title: "Comment on this line",
+  onClick: (cell) => {
+    const t = targetOfCell(cell);
+    if (t) openDraft(t);
+  },
 });
-
-/** The "+" in the margin: pointing at a line shows it; a click opens the card under the line. */
-const plus = document.createElement("button");
-plus.type = "button";
-plus.className = "cm-plus";
-plus.textContent = "+";
-plus.title = withKey("Comment on this line", "comment");
-plus.setAttribute("aria-label", "Comment on this line");
-plus.hidden = true;
-document.body.append(plus);
-let plusFor: Element | null = null;
 /** The line last pointed at, for Ctrl+Alt+M. */
 let pointed: Element | null = null;
-let plusTimer: number | undefined;
 
 function hidePlus() {
-  clearTimeout(plusTimer);
-  plus.hidden = true;
-  plusFor = null;
+  plus.hide();
 }
 
 content.addEventListener("mousemove", (e) => {
@@ -1289,23 +1265,14 @@ content.addEventListener("mousemove", (e) => {
   const cell = t.closest<HTMLElement>("td.code[data-k]");
   if (!cell) return;
   pointed = cell;
-  clearTimeout(plusTimer);
-  if (plusFor === cell) return;
-  plusFor = cell;
+  if (plus.anchor === cell && !plus.el.hidden) return plus.show(cell, { top: parseFloat(plus.el.style.top), left: parseFloat(plus.el.style.left) });
   const box = cell.getBoundingClientRect();
-  plus.style.top = `${box.top + window.scrollY}px`;
-  plus.style.left = `${box.left + window.scrollX - 20}px`;
-  plus.hidden = false;
+  plus.show(cell, { top: box.top + window.scrollY, left: box.left + window.scrollX - 22 });
 });
 content.addEventListener("mouseleave", (e) => {
-  if (e.relatedTarget !== plus) plusTimer = window.setTimeout(hidePlus, 300);
+  if (e.relatedTarget !== plus.el) plus.hide(true);
 });
-plus.addEventListener("mouseenter", () => clearTimeout(plusTimer));
-plus.addEventListener("click", () => {
-  const t = plusFor && targetOfCell(plusFor);
-  if (t) openDraft(t);
-});
-addEventListener("scroll", () => plusFor && hidePlus(), { passive: true });
+addEventListener("scroll", () => plus.anchor && hidePlus(), { passive: true });
 
 /** Ctrl+Alt+M: a comment on the line under the pointer, else on the change the last jump went to. */
 function commentHere() {

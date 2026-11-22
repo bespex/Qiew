@@ -7,7 +7,6 @@
 //! messages to the program that started Dirq, never changes to the file; the
 //! repository named with `--repo` is only read (Qiew `docs/ANNOTATE.md`).
 
-mod codedeck;
 mod repo;
 
 use std::fs;
@@ -102,18 +101,6 @@ fn open_file(
     })
 }
 
-/// Sends a comment on a line of `path` to the program that started Dirq. Only with `--annotate`
-/// for that file, and only to the socket that same call named.
-#[tauri::command]
-async fn send_comment(path: String, message: codedeck::Outgoing) -> Result<(), String> {
-    let given = grants(Path::new(&path));
-    if !given.annotate {
-        return Err("this document may not be commented (no --annotate)".into());
-    }
-    let socket = given.codedeck_socket.ok_or("not connected: no program to send to (CODEDECK_SOCKET)")?;
-    codedeck::send(Path::new(&socket), &codedeck::message_line(&message)?)
-}
-
 /// Which of the blobs the patch names the repository has (`--repo` only; else none).
 #[tauri::command]
 async fn repo_blobs(path: String, names: Vec<String>) -> Vec<bool> {
@@ -181,7 +168,7 @@ pub fn run() {
             initial_file,
             show_window,
             fit_width,
-            send_comment,
+            qiew_frame::codedeck::send_comment,
             repo_blobs,
             repo_blob,
             repo_generated,

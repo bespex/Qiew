@@ -2,13 +2,14 @@
 
 Stand 2026-11-22. **Gebaut (Dirq 0.4.0, CodeDeck): `--id`, `--annotate`, `CODEDECK_SOCKET`, `--repo` und der Rückweg.**
 Im Rahmen: `launch::Grants` je Dokument (reist in `Handover`), `launch::annotate_stdin()` (die Ausnahme für Standardeingabe,
-nur Dirq ruft sie auf; Marq nicht). Diese Datei ist die verbindliche Beschreibung der Parameter, mit
+nur Dirq ruft sie auf; Marq nicht), das Senden (`crates/frame/src/codedeck.rs`, Befehl `send_comment`, `source` = Programmname)
+und die Bedienung (`packages/frame/src/annotate.ts`: Randknopf, Eingabekarte, Notiz; Marq und Dirq nutzen sie). Diese Datei ist die verbindliche Beschreibung der Parameter, mit
 denen CodeDeck einem Betrachter etwas erlaubt, das er sonst nicht tut. Sie ist so geschrieben, dass eine Session ohne
-Vorwissen daraus bauen, testen und dokumentieren kann. Wo `apps/dirq/PLAN.md`, `apps/dirq/IDEEN.md` oder
+Vorwissen daraus bauen, testen und dokumentieren kann. Wo `apps/dirq/PLAN.md` oder
 `docs/BEDIENKONZEPT.md` etwas anderes sagen, **gilt diese Datei**.
 
 Geltungsbereich: hier steht, was die Parameter für **Dirq** bedeuten. Marq (eigene Session) kennt `--annotate` mit
-anderer Wirkung (es schreibt `<!-- @ai: … -->` in die Datei, siehe `apps/marq/IDEEN.md`); der **Name und die
+anderer Wirkung (es schreibt `<!-- @ai: … -->` in die Datei, siehe `apps/marq/KOMMENTARE.md`); der **Name und die
 Grundregeln** (Abschnitte 1 und 2) sind für beide gleich und dürfen nicht auseinanderlaufen.
 
 ---
@@ -245,7 +246,7 @@ sie sind Englisch, wie die READMEs und `--help` der Apps.
    Bestehenden**: `CODEDECK_SOCKET`, `--annotate`, `--repo`, das Einzeilen-JSON aus Abschnitt 4, und der Grundsatz „nur auf
    ausdrücklichen Wunsch“. Die Liste „CodeDeck's part“ um die neuen Aufgaben ergänzen.
 4. **Diese Datei** bleibt die ausführliche Fassung; die README verweist nicht darauf (sie muss allein verständlich sein),
-   `PLAN.md` und `IDEEN.md` verweisen darauf.
+   `docs/BEDIENKONZEPT.md` und `apps/marq/KOMMENTARE.md` verweisen darauf.
 5. **CodeDeck:** `docs/DIRQ.md` und `docs/QIEW.md` beschreiben, wann CodeDeck `--annotate`/`--repo` setzt und warum (nur
    Patches des Arbeitsordners), wie die Fähigkeit geprüft wird und was ein Nachrichteneingang bewirkt.
 6. **Release-Hinweise** von Dirq: die neuen Optionen, der Hinweis aus Abschnitt 7, Punkt 3.

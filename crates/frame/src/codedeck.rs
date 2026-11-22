@@ -1,6 +1,7 @@
-//! The way back to the program that started Dirq (Qiew `docs/ANNOTATE.md`, section 4): a comment
-//! on a line goes to it as one line of JSON on the Unix socket it named in `CODEDECK_SOCKET`. Only
-//! with `--annotate`; nothing is read from the socket, nothing is written to the patch.
+//! The way back to the program that started a viewer (`docs/ANNOTATE.md`, section 4): a comment on
+//! a line goes to it as one line of JSON on the Unix socket it named in `CODEDECK_SOCKET`. Only with
+//! `--annotate` for that document; nothing is read from the socket, nothing is written to the file.
+//! An app whose comments are only sent (Dirq) uses it; Marq writes its comments into the file.
 
 use std::io::Write;
 use std::os::unix::net::UnixStream;
@@ -8,6 +9,10 @@ use std::path::Path;
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
+use tauri::State;
+
+use crate::AppInfo;
+use crate::launch::grants;
 
 /// The longest comment that is sent, in characters.
 pub const MAX_TEXT: usize = 10_000;
@@ -34,7 +39,7 @@ pub struct Outgoing {
 struct Message<'a> {
     v: u8,
     action: &'a str,
-    source: &'static str,
+    source: &'a str,
     id: &'a str,
     #[serde(skip_serializing_if = "Option::is_none")]
     file: Option<&'a str>,
@@ -55,7 +60,8 @@ fn cut(text: &str, max: usize) -> String {
 }
 
 /// The message as one line of JSON, ending in a line break; an error for what is not a comment.
-pub fn message_line(o: &Outgoing) -> Result<String, String> {
+/// `source` is the app that sends it (its program name).
+pub fn message_line(o: &Outgoing, source: &str) -> Result<String, String> {
     if o.id.chars().count() < 8 || o.id.len() > 64 {
         return Err("a comment needs an id of 8 to 64 characters".into());
     }
@@ -70,7 +76,7 @@ pub fn message_line(o: &Outgoing) -> Result<String, String> {
             Message {
                 v: 1,
                 action: "line_comment",
-                source: "dirq",
+                source,
                 id: &o.id,
                 file: Some(file),
                 line: Some(line),
@@ -84,7 +90,7 @@ pub fn message_line(o: &Outgoing) -> Result<String, String> {
         "line_comment_remove" => Message {
             v: 1,
             action: "line_comment_remove",
-            source: "dirq",
+            source,
             id: &o.id,
             file: None,
             line: None,
@@ -97,6 +103,18 @@ pub fn message_line(o: &Outgoing) -> Result<String, String> {
     };
     // serde_json escapes line breaks inside strings: the message stays one line
     serde_json::to_string(&message).map(|m| m + "\n").map_err(|e| e.to_string())
+}
+
+/// Sends a comment on a line of `path` to the program that started the viewer. Only with
+/// `--annotate` for that file, and only to the socket that same call named.
+#[tauri::command]
+pub async fn send_comment(path: String, message: Outgoing, info: State<'_, &'static AppInfo>) -> Result<(), String> {
+    let given = grants(Path::new(&path));
+    if !given.annotate {
+        return Err("this document may not be commented (no --annotate)".into());
+    }
+    let socket = given.codedeck_socket.ok_or("not connected: no program to send to (CODEDECK_SOCKET)")?;
+    send(Path::new(&socket), &message_line(&message, info.bin)?)
 }
 
 /// Sends one message to the socket and closes the connection; nothing is read back.
@@ -114,6 +132,10 @@ mod tests {
     use super::*;
     use std::io::Read;
     use std::os::unix::net::UnixListener;
+
+    fn message_line_d(o: &Outgoing) -> Result<String, String> {
+        message_line(o, "dirq")
+    }
 
     fn comment(file: &str, line: u32, code: &str, text: &str) -> Outgoing {
         Outgoing {
@@ -137,7 +159,7 @@ mod tests {
     #[test]
     fn a_comment_is_one_line_of_json() {
         let text = "Was, wenn 0?\nUnd \"leer\" – Umlaute: äöü";
-        let m = parse(&message_line(&comment("src/limit.rs", 42, "let burst = cfg.burst;", text)).unwrap());
+        let m = parse(&message_line_d(&comment("src/limit.rs", 42, "let burst = cfg.burst;", text)).unwrap());
         assert_eq!(m["v"], 1);
         assert_eq!(m["action"], "line_comment");
         assert_eq!(m["source"], "dirq");
@@ -154,7 +176,7 @@ mod tests {
         let mut c = comment("a.rs", 1, &"x".repeat(500), &"ä".repeat(MAX_TEXT + 50));
         c.session = Some("s-7".into());
         c.doc = Some("Turn 3 · repo".into());
-        let m = parse(&message_line(&c).unwrap());
+        let m = parse(&message_line_d(&c).unwrap());
         assert_eq!(m["code"].as_str().unwrap().chars().count(), MAX_CODE);
         assert_eq!(m["text"].as_str().unwrap().chars().count(), MAX_TEXT);
         assert_eq!(m["session"], "s-7");
@@ -164,21 +186,21 @@ mod tests {
     #[test]
     fn removing_names_only_the_id() {
         let o = Outgoing { action: "line_comment_remove".into(), id: "d4f1a2b3".into(), file: None, line: None, code: None, text: None, session: None, doc: None };
-        let m = parse(&message_line(&o).unwrap());
+        let m = parse(&message_line_d(&o).unwrap());
         assert_eq!(m, serde_json::json!({"v": 1, "action": "line_comment_remove", "source": "dirq", "id": "d4f1a2b3"}));
     }
 
     #[test]
     fn what_is_not_a_comment_is_refused() {
-        assert!(message_line(&comment("a.rs", 0, "", "x")).is_err(), "line 0");
-        assert!(message_line(&comment("", 3, "", "x")).is_err(), "no file");
-        assert!(message_line(&comment("a.rs", 3, "", "  ")).is_err(), "no text");
+        assert!(message_line_d(&comment("a.rs", 0, "", "x")).is_err(), "line 0");
+        assert!(message_line_d(&comment("", 3, "", "x")).is_err(), "no file");
+        assert!(message_line_d(&comment("a.rs", 3, "", "  ")).is_err(), "no text");
         let mut short = comment("a.rs", 3, "", "x");
         short.id = "abc".into();
-        assert!(message_line(&short).is_err(), "short id");
+        assert!(message_line_d(&short).is_err(), "short id");
         let mut other = comment("a.rs", 3, "", "x");
         other.action = "revert_hunk".into();
-        assert!(message_line(&other).is_err(), "unknown action");
+        assert!(message_line_d(&other).is_err(), "unknown action");
     }
 
     #[test]
@@ -188,7 +210,7 @@ mod tests {
         let socket = dir.join("test.sock");
         let _ = std::fs::remove_file(&socket);
         let listener = UnixListener::bind(&socket).unwrap();
-        let line = message_line(&comment("a.rs", 3, "x", "y")).unwrap();
+        let line = message_line_d(&comment("a.rs", 3, "x", "y")).unwrap();
         let reader = std::thread::spawn(move || {
             let (mut stream, _) = listener.accept().unwrap();
             let mut got = String::new();

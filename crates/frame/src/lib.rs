@@ -12,8 +12,10 @@
 //! - [`launch`]: the command line every app understands (file, line, placement, reuse)
 //! - [`export`]: saving the document in another form, for apps that offer one
 //! - [`siblings`]: handing the file shown to another Qiew viewer
+//! - [`codedeck`]: sending comments to the program that started the viewer (`--annotate`)
 
 pub mod about;
+pub mod codedeck;
 pub mod export;
 pub mod help;
 pub mod launch;

@@ -3,6 +3,7 @@
  * points at, what goes to the program that started Dirq, how a comment finds its line again in a
  * new version of the patch, and the list to copy when there is nowhere to send them. No DOM in here.
  */
+import type { Outgoing } from "@qiew/frame/annotate";
 import type { DiffLine, FileDiff, Hunk } from "./diff";
 
 /** What CodeDeck reads in front of the text of a removed line (fixed by the specification). */
@@ -94,17 +95,8 @@ export function newId(random: () => number = Math.random): string {
   return Array.from({ length: 12 }, () => alphabet[Math.floor(random() * alphabet.length)]).join("");
 }
 
-/** What the backend makes the message of (`send_comment`): one line of JSON from these fields. */
-export interface Outgoing {
-  action: "line_comment" | "line_comment_remove";
-  id: string;
-  file?: string;
-  line?: number;
-  code?: string;
-  text?: string;
-  session?: string;
-  doc?: string;
-}
+/** What the frame's `sendComment` makes one line of JSON of. */
+export type { Outgoing };
 
 export function addMessage(c: Comment, session?: string, doc?: string | null): Outgoing {
   return { action: "line_comment", id: c.id, file: c.target.file, line: c.target.line, code: codeOf(c.target), text: c.text, session, doc: doc ?? undefined };

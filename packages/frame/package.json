@@ -2,7 +2,7 @@
   "name": "@qiew/frame",
   "private": true,
   "version": "0.1.0",
-  "description": "What the Qiew viewers share: colour schemes, toolbar, search, folding, split view, Mermaid diagrams, syntax colours",
+  "description": "What the Qiew viewers share: colour schemes, toolbar, search, folding, split view, Mermaid diagrams, syntax colours, commenting",
   "type": "module",
   "exports": {
     "./*.css": "./src/*.css",

@@ -30,7 +30,7 @@ describe("marks", () => {
     expect(g[1].notes[0]).toEqual({ type: "me", status: "erledigt", text: "Quelle prüfen", line: 6 });
     expect(g[1].target).toBe("9:paragraph_open");
     expect(g[5].target).toBeNull();
-    expect(g[1].label).toBe("2 Kommentare, 1 offen");
+    expect(g[1].label).toBe("2 comments, 1 open");
     expect(g[5].orphan).toBe(true);
     expect(g.slice(0, 5).every((x) => !x.orphan)).toBe(true);
   });
