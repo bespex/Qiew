@@ -19,6 +19,7 @@ pub mod codedeck;
 pub mod export;
 pub mod help;
 pub mod launch;
+mod raise;
 pub mod siblings;
 #[cfg(target_os = "linux")]
 pub mod default_handler;

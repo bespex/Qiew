@@ -368,6 +368,13 @@ pub(crate) fn listen(app: &AppHandle, info: &AppInfo) {
                 }
                 let _ = window.unminimize();
                 let _ = window.set_focus();
+                // Asked by itself the window manager may refuse it the focus (Cinnamon does): asked
+                // as a pager it grants it. A moment later, after the window is shown again
+                let title = window.title().unwrap_or_default();
+                thread::spawn(move || {
+                    thread::sleep(std::time::Duration::from_millis(50));
+                    crate::raise::as_pager(&title);
+                });
             }
             match handover.file {
                 Some(file) => drop(app.emit("open-file", file)),
