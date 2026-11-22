@@ -60,7 +60,7 @@ Requirements: Ubuntu 24.04+, Linux Mint 22+ or Debian 13+ (x86_64).
 - **Search in the page** – Ctrl+F finds text in the rendered page (the engine's own find), in the source with
   highlights and match count.
 
-Like every Qiew viewer: read-only, one file at a time, live reload, copy, About box, four colour schemes, and the
+Like every Qiew viewer: read-only, one file at a time, Esc closes the window, live reload, copy, About box, four colour schemes, and the
 question whether it should become the default viewer.
 
 ## Usage

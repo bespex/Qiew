@@ -60,7 +60,7 @@ Requirements: Ubuntu 24.04+, Linux Mint 22+ or Debian 13+ (x86_64).
 - **Large files** – only the rows in view are drawn.
 - **Export** – the table as shown (filtered, sorted) as CSV, never over the file shown.
 
-Like every Qiew viewer: read-only, one file at a time, live reload, copy, About box, four colour schemes, and the
+Like every Qiew viewer: read-only, one file at a time, Esc closes the window, live reload, copy, About box, four colour schemes, and the
 question whether it should become the default viewer.
 
 ## Usage

@@ -222,6 +222,7 @@ export function initSearch(doc: HTMLElement) {
       e.preventDefault();
       step(e.shiftKey ? -1 : 1);
     } else if (e.key === "Escape" && !box.hidden && document.activeElement !== input) {
+      e.preventDefault();
       closeSearch();
     }
   });

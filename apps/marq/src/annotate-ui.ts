@@ -202,6 +202,7 @@ function openInput(opts: { block: BlockRef | null; anchor: HTMLElement; line?: n
   const editing = opts.line !== undefined;
   let me: Input;
   const card = inputCard({
+    title: editing ? "Change comment" : "New comment",
     text: opts.text,
     placeholder: `${editing ? "Change the comment" : "A comment"} …`,
     hint: "Ctrl+Enter saves, Esc cancels",

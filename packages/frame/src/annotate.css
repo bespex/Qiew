@@ -19,20 +19,27 @@
 .qa-plus:focus-visible { color: var(--accent); border-color: var(--accent); }
 
 /* ---- the input card ---- */
+/* Clearly not part of the document: tinted in the comment's colour, a coloured frame, lifted by a shadow. */
 .qa-input {
+  --qa-tint: color-mix(in srgb, var(--note, var(--accent)) 9%, var(--bg));
   box-sizing: border-box;
   max-width: 760px;
-  padding: 8px 10px;
+  margin: 4px 0;
+  padding: 8px 12px 10px;
   font: 13px/1.45 var(--sans, system-ui);
   color: var(--fg);
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-left: 3px solid var(--note, var(--accent));
+  background: var(--qa-tint);
+  border: 1px solid color-mix(in srgb, var(--note, var(--accent)) 55%, var(--border));
+  border-left: 4px solid var(--note, var(--accent));
   border-radius: 8px;
+  box-shadow: 0 6px 22px rgb(0 0 0 / 22%), 0 1px 3px rgb(0 0 0 / 12%);
   white-space: normal;
 }
 .qa-input.busy { opacity: 0.6; pointer-events: none; }
-.qa-chips { display: flex; gap: 4px; margin-bottom: 6px; }
+.qa-input-head { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+.qa-input-head .qa-bubble svg { width: 15px; height: 15px; }
+.qa-title { font-weight: 600; font-size: 12.5px; color: var(--fg); }
+.qa-chips { display: flex; gap: 4px; margin-left: auto; }
 .qa-chip {
   padding: 1px 8px;
   font: 600 12px var(--mono);
@@ -52,8 +59,8 @@
   padding: 6px 8px;
   font: 13px/1.45 var(--sans, system-ui);
   color: var(--fg);
-  background: var(--surface);
-  border: 1px solid var(--border);
+  background: var(--bg);
+  border: 1px solid color-mix(in srgb, var(--note, var(--accent)) 35%, var(--border));
   border-radius: 6px;
 }
 .qa-input textarea:focus { outline: 2px solid var(--note, var(--accent)); outline-offset: -1px; }
@@ -63,7 +70,7 @@
   padding: 3px 10px;
   font: inherit;
   color: var(--fg);
-  background: var(--surface);
+  background: var(--bg);
   border: 1px solid var(--border);
   border-radius: 6px;
   cursor: pointer;

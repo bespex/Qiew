@@ -220,6 +220,7 @@ function initPageSearch() {
         e.stopImmediatePropagation();
         pageSearchOpen();
       } else if (e.key === "Escape" && !searchBox.hidden) {
+        e.preventDefault();
         e.stopImmediatePropagation();
         hide();
       }

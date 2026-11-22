@@ -19,7 +19,8 @@ double-click, show it nicely, follow the file when it changes – and never writ
 | [Maiqe](apps/maiqe/README.md) | Mermaid diagrams, one card each | zoom, text view |
 
 
-All of them: copy, live reload, file association, and the same toolbar: navigation on the left, what is shown in
+All of them: copy, live reload, file association, Esc closes the window (when nothing else, such as the search or a
+menu, takes it), and the same toolbar: navigation on the left, what is shown in
 the centre, on the right the app's view switches, then copy and export, and at the edge
 the menu with colour scheme and About. Marq, Xaq and Jayq also search (Ctrl+F) and have four colour
 schemes; Trisq takes its colours and its width from the component.

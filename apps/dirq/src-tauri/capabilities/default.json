@@ -9,6 +9,7 @@
     "core:event:default",
     "core:webview:default",
     "core:window:allow-set-theme",
+    "core:window:allow-close",
     "clipboard-manager:allow-write-text"
   ]
 }

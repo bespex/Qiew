@@ -92,6 +92,8 @@ export interface Chip {
 }
 
 export interface InputCardOptions {
+  /** The card's heading, beside the bubble: "New comment", "Change comment". */
+  title?: string;
   text?: string;
   placeholder: string;
   /** Beside the buttons: where the comment goes, and the keys. */
@@ -123,8 +125,13 @@ export function inputCard(o: InputCardOptions): InputCard {
     .filter((c) => !o.lockChip || c.id === o.chip)
     .map((c) => `<button type="button" class="qa-chip" data-chip="${esc(c.id)}" style="--note: ${c.colour}" title="${esc(c.title)}">${esc(c.label)}</button>`)
     .join("");
+  // A heading with the bubble (and the kinds beside it) sets the card apart from the document
+  el.setAttribute("role", "dialog");
+  el.setAttribute("aria-label", o.title ?? "Comment");
   el.innerHTML =
-    (chips ? `<div class="qa-chips" role="radiogroup" aria-label="Kind">${chips}</div>` : "") +
+    `<div class="qa-input-head"><span class="qa-bubble">${ICON.bubble}</span><span class="qa-title">${esc(o.title ?? "Comment")}</span>` +
+    (chips ? `<span class="qa-chips" role="radiogroup" aria-label="Kind">${chips}</span>` : "") +
+    `</div>` +
     `<textarea rows="3" placeholder="${esc(o.placeholder)}" aria-label="Comment"></textarea>` +
     `<div class="qa-error" hidden></div>` +
     `<div class="qa-actions"><span class="qa-keys">${esc(o.hint)}</span>` +

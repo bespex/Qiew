@@ -261,6 +261,9 @@ export function initNotes(doc: HTMLElement) {
     }
   });
   document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape" && card && !(e.target as Element).closest?.(".qa-input")) hide();
+    if (e.key === "Escape" && card && !(e.target as Element).closest?.(".qa-input")) {
+      e.preventDefault();
+      hide();
+    }
   });
 }

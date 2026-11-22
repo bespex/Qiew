@@ -66,7 +66,7 @@ Requirements: Ubuntu 24.04+, Linux Mint 22+ or Debian 13+ (x86_64).
 - **Colour schemes** – the diagrams follow the light or dark scheme of the window.
 - **Export** – every card saves its diagram as SVG.
 
-Like every Qiew viewer: read-only, one file at a time, copy, About box, and the question whether it should become
+Like every Qiew viewer: read-only, one file at a time, Esc closes the window, copy, About box, and the question whether it should become
 the default viewer for `.mmd` and `.mermaid`.
 
 ## Usage

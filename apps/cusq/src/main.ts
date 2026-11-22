@@ -303,6 +303,7 @@ document.addEventListener("keydown", (e) => {
     e.preventDefault();
     openSearch();
   } else if (e.key === "Escape" && !searchBox.hidden) {
+    e.preventDefault();
     closeSearch();
   } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "c" && selected >= 0 && !getSelection()?.toString()) {
     const inField = document.activeElement instanceof HTMLInputElement;

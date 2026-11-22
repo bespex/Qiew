@@ -95,7 +95,10 @@ export function initOutline() {
     if (isOpen() && !isPinned() && !(e.target as Element).closest("#outline, #outline-btn")) setOpen(false);
   });
   document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape" && isOpen() && !isPinned() && $("search").hidden) setOpen(false);
+    if (e.key === "Escape" && isOpen() && !isPinned() && $("search").hidden) {
+      e.preventDefault();
+      setOpen(false);
+    }
     if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === "o") {
       e.preventDefault();
       if (heads.length) setOpen(!isOpen());

@@ -1,4 +1,5 @@
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
+import { initEscapeClose } from "./close";
 import { showAbout } from "./about";
 import { appId } from "./app";
 import { initExport } from "./export";
@@ -87,6 +88,7 @@ function initMenu() {
   });
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape" && !menu.hidden) {
+      e.preventDefault();
       setOpen(false);
       btn.focus();
     }
@@ -131,6 +133,7 @@ function initScrollShadow() {
 }
 
 export function initToolbar() {
+  initEscapeClose();
   initCopy();
   initScrollShadow();
   initExport();
