@@ -34,6 +34,12 @@ export async function revealLaunchLine(reveal: (line: number) => void) {
  */
 export const launchDocId = () => invoke<string | null>("doc_id").catch(() => null);
 
+/**
+ * The part of the document the call that opened it asked to show (`--file`; Dirq: one file of the
+ * patch), or null for the whole document. Ask once per document opened, like `launchDocId`.
+ */
+export const launchFocus = () => invoke<string | null>("doc_focus").catch(() => null);
+
 /** A running viewer may be asked for a line of the file it already shows. */
 export function onRevealRequest(reveal: (line: number) => void) {
   listen("reveal-line", () => revealLaunchLine(reveal));

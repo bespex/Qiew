@@ -52,6 +52,10 @@ static INFO: AppInfo = AppInfo {
             "let the user comment on single lines (a \"+\" in the margin); each comment is sent to the program that started Dirq (CODEDECK_SOCKET), never written to the patch. Without it Dirq only views.",
         ),
         (
+            "--file <path>",
+            "show only this file of the patch, with a bar to step to the others and to show all of them; the file list starts closed. Without it Dirq shows all files. Put it after the file or `-`.",
+        ),
+        (
             "--repo <path>",
             "let Dirq look into this Git repository, read-only, for more lines around a change and for files marked as generated. Put it after the file or `-`.",
         ),
@@ -177,7 +181,8 @@ pub fn run() {
             qiew_frame::export::export_info,
             qiew_frame::export::export_file,
             qiew_frame::launch::take_line,
-            qiew_frame::launch::doc_id
+            qiew_frame::launch::doc_id,
+            qiew_frame::launch::doc_focus
         ])
         .setup(|app| {
             qiew_frame::setup(app, &INFO);

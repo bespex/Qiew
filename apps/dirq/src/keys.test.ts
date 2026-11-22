@@ -32,6 +32,11 @@ describe("labels", () => {
     expect(keyLabel("nextSection")).toBe("Alt+↓");
     expect(withKey("Next file", "nextSection")).toBe("Next file (Alt+↓)");
     expect(keyLabel("toggleNav")).toBe("Ctrl+Shift+O");
+    // Up and down within, left and right across; a gesture may have two keys
+    expect(keyLabel("nextChange")).toBe("Alt+↓, F7");
+    expect(keyLabel("prevChange")).toBe("Alt+↑, Shift+F7");
+    expect(withKey("Next file", "nextFile")).toBe("Next file (Alt+→)");
+    expect(keyLabel("jumpBack")).toBe("Alt+Shift+←");
   });
   it("knows which keys work in a text field", () => {
     expect(worksInFields("F7")).toBe(true);

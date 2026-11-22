@@ -22,13 +22,24 @@
               <span class="tb-count" id="cm-count"></span>
             </button>
           </div>
-          <div class="tb-part needs-doc" hidden>
-            <span class="tb-stats" id="chg-count" title="Position among the changes"></span>
-            <button class="tb-btn" id="prev-btn" title="Previous change (Shift+F7)" aria-label="Previous change">
+          <div class="tb-part tb-nav needs-doc" hidden>
+            <svg class="tb-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v7M8.5 7.5h7M8.5 17.5h7" /></svg>
+            <button class="tb-btn" id="prev-btn" title="Previous change" aria-label="Previous change">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5M6.5 10.5 12 5l5.5 5.5" /></svg>
             </button>
-            <button class="tb-btn" id="next-btn" title="Next change (F7)" aria-label="Next change">
+            <span class="tb-stats" id="chg-count" title="Change shown, of all changes shown"></span>
+            <button class="tb-btn" id="next-btn" title="Next change" aria-label="Next change">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M6.5 13.5 12 19l5.5-5.5" /></svg>
+            </button>
+          </div>
+          <div class="tb-part tb-nav" id="file-nav" hidden>
+            <svg class="tb-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3.5h7l4 4v13H7z" /><path d="M14 3.5v4h4" /></svg>
+            <button class="tb-btn" id="file-prev" title="Previous file" aria-label="Previous file">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m14.5 6-6 6 6 6" /></svg>
+            </button>
+            <span class="tb-stats" id="file-count" title="File shown, of all files"></span>
+            <button class="tb-btn" id="file-next" title="Next file" aria-label="Next file">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9.5 6 6 6-6 6" /></svg>
             </button>
           </div>
         </div>
@@ -54,6 +65,9 @@
         </div>
         <div class="tb-group tb-right">
           <div class="tb-part needs-doc" id="view-tools" hidden>
+            <button class="tb-btn" id="one-btn" title="One file at a time" aria-label="One file at a time" aria-pressed="false" hidden>
+              <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="4" width="12" height="16" rx="1.5" /><path d="M9 9h6M9 12.5h6M9 16h4" /></svg>
+            </button>
             <button class="tb-btn" id="mode-btn" title="Unified view" aria-label="Switch between side by side and unified view">
               <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="14" rx="2" /><path d="M12 5v14M7 10h2M15 14h2" /></svg>
             </button>

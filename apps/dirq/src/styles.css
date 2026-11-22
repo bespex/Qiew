@@ -14,7 +14,7 @@
   --head-h: 36px;
 }
 
-.layout { display: grid; grid-template-columns: 252px minmax(0, 1fr); align-items: start; }
+.layout { display: grid; grid-template-columns: var(--side-w, 300px) minmax(0, 1fr); align-items: start; }
 .layout.no-side { grid-template-columns: minmax(0, 1fr); }
 .layout.no-side #files { display: none; }
 
@@ -46,17 +46,12 @@
 #files .nm bdi { direction: ltr; unicode-bidi: plaintext; }
 #files .nm i { font-style: normal; color: var(--muted); }
 #files .cnt { font: 11px var(--mono); white-space: nowrap; }
-#files a.sec {
-  display: block;
-  padding: 2px 8px 2px 30px;
-  border-radius: 6px;
-  color: var(--muted);
-  font: 11.5px var(--mono);
-  text-decoration: none;
-  cursor: pointer;
-}
-#files a.sec:hover { background: var(--surface); color: var(--fg); }
-#files a.sec .nm { display: block; direction: ltr; }
+/* Dragging the right edge of the side panel changes its width (200 to 400 pixels). */
+.side-grip { position: fixed; top: 41px; bottom: 0; left: calc(var(--side-w, 300px) - 3px); z-index: 6; width: 6px; cursor: col-resize; }
+.side-grip:hover, .side-grip.dragging { background: color-mix(in srgb, var(--accent) 35%, transparent); }
+.layout.no-side .side-grip { display: none; }
+body.resizing { cursor: col-resize; user-select: none; }
+body.export .side-grip { display: none; }
 .fl-bar { display: grid; gap: 6px; margin: 0 4px 10px 0; }
 .fl-q {
   width: 100%;
@@ -246,7 +241,7 @@ body.export #ruler, .layout[hidden] ~ #ruler { display: none; }
 tr.cm-row > td { padding: 4px 12px 6px 62px; background: var(--bg); white-space: normal; }
 .cm-elsewhere { display: grid; gap: 6px; padding: 8px 12px; border-bottom: 1px solid var(--border-soft); }
 /* A note under its line: the frame's note in a light box, like Marq's card. */
-.cm-box { max-width: 760px; padding: 2px 0; border: 1px solid var(--border-soft); border-radius: 6px; background: color-mix(in srgb, var(--accent) 5%, var(--bg)); }
+.cm-box { max-width: 760px; padding: 2px 0; border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--border)); border-radius: 6px; background: color-mix(in srgb, var(--accent) 7%, var(--bg)); box-shadow: 0 1px 3px rgb(0 0 0 / 8%); }
 .cm-box:has(.launch-line), .qa-note.launch-line { background: color-mix(in srgb, var(--accent) 22%, var(--bg)); }
 .fl-comments button {
   display: inline-flex;
@@ -266,6 +261,7 @@ tr.cm-row > td { padding: 4px 12px 6px 62px; background: var(--bg); white-space:
 .fl-comments { display: grid; gap: 4px; margin: 14px 4px 0 0; padding-top: 10px; border-top: 1px solid var(--border-soft); }
 .cm-title { font-weight: 600; font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
 .cm-hint { color: var(--muted); font-size: 12px; }
+.cm-warn { padding: 4px 8px; border-radius: 6px; background: color-mix(in srgb, #bf8700 16%, var(--bg)); color: var(--fg); font-size: 12px; }
 #files a.cm-entry { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 6px; padding: 3px 6px; border-radius: 6px; border-left: 2px solid var(--accent); color: var(--fg); cursor: pointer; text-decoration: none; }
 #files a.cm-entry.unsent { border-left-color: #bf8700; }
 #files a.cm-entry.lost { opacity: .6; }
@@ -289,3 +285,16 @@ tr.gap-row button svg { width: 12px; height: 12px; fill: none; stroke: currentCo
 tr.gap-row button.busy { opacity: .5; }
 tr.extra td.code { color: color-mix(in srgb, var(--fg) 82%, var(--bg)); }
 body.export tr.gap-row button, body.export .cm-row, body.export .cm-elsewhere { display: none; }
+
+/* ---- one file alone (--file) ---- */
+.meta.compact { margin-bottom: 10px; padding: 12px 18px; }
+.meta.compact h1 { font-size: 17px; margin: 4px 0 2px; }
+.meta.compact .message { margin-top: 6px; }
+.meta.compact .message.clamped { max-height: 4.6em; }
+.meta.compact .summary, .meta.compact .trailers { display: none; }
+.focus-note { margin: 0 0 10px; padding: 6px 10px; border-radius: 8px; background: color-mix(in srgb, #bf8700 14%, var(--bg)); font-size: 12.5px; }
+
+/* The two navigations in the toolbar: a symbol, the arrows, where one is (x / y) */
+.tb-nav .tb-nav-icon { width: 16px; height: 16px; margin: 0 1px 0 4px; fill: none; stroke: var(--muted); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.tb-nav .tb-stats { min-width: 3.2em; text-align: center; }
+#one-btn[aria-pressed="true"] { color: var(--accent); background: var(--surface); }

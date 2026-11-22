@@ -11,14 +11,15 @@ import "./styles.css";
 import { setApp } from "@qiew/frame/app";
 import { setExportContent } from "@qiew/frame/export";
 import { plural } from "@qiew/frame/fragment";
-import { launchDocId, onRevealRequest, revealElement, revealLaunchLine, revealTextLine } from "@qiew/frame/launch";
+import { launchDocId, launchFocus, onRevealRequest, revealElement, revealLaunchLine, revealTextLine } from "@qiew/frame/launch";
 import { openInitial } from "@qiew/frame/reveal";
 import { closeSearch, initSearch, refreshSearch } from "@qiew/frame/search";
 import { JumpHistory } from "@qiew/frame/jumps";
 import { onKeys, setKeyHelp, toggleHelp, withKey } from "@qiew/frame/keys";
 import { highlightLines, languageOf, markRanges } from "@qiew/frame/highlight";
 import { initToolbar, updateToolbar } from "@qiew/frame/toolbar";
-import { type DiffLine, type FileDiff, type Hunk, type Patch, type Span, describeInfo, inlineDiff, outline, parsePatch } from "./diff";
+import { keepOpenOnEscape } from "@qiew/frame/close";
+import { type DiffLine, type FileDiff, type Hunk, type Patch, type Span, describeInfo, inlineDiff, parsePatch } from "./diff";
 import { CHIPS, type Chip, type FileFilter, type Sort, visibleFiles } from "./filter";
 import { docKey } from "./docid";
 import { isGenerated } from "./generated";
@@ -70,7 +71,19 @@ const save = (key: string, value: string) => {
 };
 let unified = store("mode", "split") === "unified";
 let ignoreWs = store("ws", "0") === "1";
-let sideOpen = store("side", "1") === "1";
+/** The file list: open for the whole patch, closed when one file is shown (--file); toggled by hand in between. */
+let sideOpen = true;
+/** --file: the one file shown (its path), null for all files. */
+let focus: string | null = null;
+/** What the call that opened the document asked for (or the toggle): applied by the next rendering. */
+let wantFocus: string | null | undefined;
+/** The file list as a call from outside sets it (closed with --file, open without); the toggle leaves it alone. */
+let wantSide: boolean | undefined;
+/** A file asked for that is not in the patch: said above the files. */
+let focusMissing: string | null = null;
+/** The width of the side panel, 200 to 400 pixels. */
+const sideWidth = (w: number) => Math.min(400, Math.max(200, Math.round(w)));
+document.documentElement.style.setProperty("--side-w", `${sideWidth(Number(store("sideWidth", "300")) || 300)}px`);
 
 const SORTS: Sort[] = ["folder", "size", "status"];
 const filter: FileFilter & { chips: Set<Chip> } = {
@@ -108,7 +121,7 @@ const blobColours = new Map<string, string[] | null>();
 const opened = new Map<string, Map<number, Opened>>();
 /** Files the repository marks as generated (linguist-generated), and those already folded for it. */
 const repoGenerated = new Set<string>();
-/** Where the view was before each jump (file, change, outline entry), for Alt+← and Alt+→. */
+/** Where the view was before each jump (file, change), for Alt+← and Alt+→. */
 const jumps = new JumpHistory<number>((a, b) => Math.abs(a - b) < 8);
 
 /** Scrolls to `top` as a jump: the place it leaves is remembered. */
@@ -424,13 +437,14 @@ function dateHtml(date: string): string {
 
 const GENERATOR = { git: "Git", idea: "IntelliJ IDEA", svn: "Subversion", plain: "diff" } as const;
 
-function metaHtml(p: Patch, name: string): string {
+/** The patch's header; `compact` above a single file: smaller, the message to three lines, no totals. */
+function metaHtml(p: Patch, name: string, compact = false): string {
   const m = p.meta;
   const by = [m.author ? authorHtml(m.author) : "", m.date ? dateHtml(m.date) : "", m.commit ? `<code>${esc(m.commit.slice(0, 8))}</code>` : ""].filter(Boolean);
   const paragraphs = m.message === "" ? "" : m.message.split(/\n{2,}/).map((t) => `<p>${esc(t)}</p>`).join("");
-  const long = m.message.split("\n").length > 7;
+  const long = m.message.split("\n").length > (compact ? 3 : 7);
   return (
-    `<section class="meta"><div class="meta-top">${m.tag ? `<span class="chip tag">${esc(m.tag)}</span>` : ""}` +
+    `<section class="meta${compact ? " compact" : ""}"><div class="meta-top">${m.tag ? `<span class="chip tag">${esc(m.tag)}</span>` : ""}` +
     `<span class="chip">${GENERATOR[m.generator]}</span></div>` +
     `<h1>${esc(m.subject ?? name)}</h1>` +
     (by.length ? `<div class="byline">${by.join('<span class="sep">·</span>')}</div>` : "") +
@@ -467,13 +481,10 @@ function listHtml(p: Patch): string {
       const f = p.files[i];
       const isFresh = freshIn(f) > 0;
       const said = commentsIn(f);
-      const sections = outline(f)
-        .map((o) => `<a class="sec" data-i="${i}" data-src="${o.hunk.src}" title="${esc(o.section)}"><span class="nm"><bdi>${esc(o.section)}</bdi></span></a>`)
-        .join("");
       return (
         `<a class="f" data-i="${i}"><span class="st st-${f.status}">${STATUS[f.status]}</span>` +
         `<span class="nm"><bdi>${pathHtml(key(f), strip)}</bdi></span>` +
-        `<span class="cnt">${said ? `<span class="cmc" title="${plural(said, "comment")}">${BUBBLE_SVG}${said}</span>` : ""}${isFresh ? `<span class="dot" title="New since the last reload – click to clear"></span>` : ""}<span class="a">+${f.added}</span> <span class="d">−${f.deleted}</span></span></a>${sections}`
+        `<span class="cnt">${said ? `<span class="cmc" title="${plural(said, "comment")}">${BUBBLE_SVG}${said}</span>` : ""}${isFresh ? `<span class="dot" title="New since the last reload – click to clear"></span>` : ""}<span class="a">+${f.added}</span> <span class="d">−${f.deleted}</span></span></a>`
       );
     })
     .join("");
@@ -630,7 +641,26 @@ function render() {
   const marked = updateFresh(reload ? fresh : new Set(), reload ? before : null, patch);
   fresh = marked.keys;
   flashing = marked.now;
-  content.innerHTML = metaHtml(patch, fileName(current.path)) + patch.files.map((f, i) => fileHtml(f, i)).join("");
+  // --file: one file alone, opened even if it is long or generated; the file list starts closed
+  const was = focus;
+  if (wantFocus !== undefined) {
+    focus = wantFocus;
+    if (wantSide !== undefined) sideOpen = wantSide;
+    wantSide = undefined;
+    focusMissing = null;
+    if (focus) collapsed.delete(focus);
+    wantFocus = undefined;
+  }
+  if (focus && !patch.files.some((f) => key(f) === focus)) {
+    focusMissing = focus;
+    focus = null;
+    sideOpen = true;
+  }
+  const shown = patch.files.map((f, i) => [f, i] as const).filter(([f]) => !focus || key(f) === focus);
+  content.innerHTML =
+    metaHtml(patch, fileName(current.path), !!focus) +
+    (focusMissing ? `<div class="focus-note">${esc(focusMissing)} is not in this version of the patch, so all files are shown.</div>` : "") +
+    shown.map(([f, i]) => fileHtml(f, i)).join("");
   content.querySelectorAll<HTMLElement>(".file").forEach(applyFresh);
   flashing = new Set();
   hidePlus();
@@ -641,12 +671,19 @@ function render() {
   layout.classList.toggle("no-side", !sideShown());
   $btn("side-btn").hidden = patch.files.length < 2;
   $btn("side-btn").setAttribute("aria-pressed", String(sideOpen));
+  // Stepping through files, and one file or all: only where there is more than one
+  document.getElementById("file-nav")!.hidden = patch.files.length < 2;
+  $btn("one-btn").hidden = patch.files.length < 2;
+  $btn("one-btn").setAttribute("aria-pressed", String(!!focus));
+  $btn("one-btn").title = focus ? "Show all files" : "One file at a time";
   $btn("mode-btn").title = unified ? "Side by side view" : "Unified view";
   $btn("ws-btn").setAttribute("aria-pressed", String(ignoreWs));
-  updateToolbar(current.content, `${plural(patch.files.length, "File")} · +${patch.added} −${patch.deleted}`);
+  // The centre says what is shown: the one file, or all of them
+  const one = focus ? patch.files.find((f) => key(f) === focus) : undefined;
+  updateToolbar(current.content, one ? `${fileName(focus!)} · +${one.added} −${one.deleted}` : `${plural(patch.files.length, "File")} · +${patch.added} −${patch.deleted}`);
   showCommentTools();
   setExportContent(exportHtml);
-  if (!reload) window.scrollTo(0, 0);
+  if (!reload || focus !== was) window.scrollTo(0, 0);
   else if (!anchor || !restore(anchor)) window.scrollTo(0, scroll);
   refreshSearch();
   spy();
@@ -685,6 +722,9 @@ async function open(path: string, fromCaller = true) {
   try {
     current = await invoke<Doc>("open_file", { path });
     docId = fromCaller ? await launchDocId() : null;
+    // Each call says whether it wants one file or all of them
+    wantFocus = fromCaller ? await launchFocus() : null;
+    wantSide = !wantFocus;
     render();
     void probeRepo();
     if (firstShown) {
@@ -741,13 +781,14 @@ filesEl.addEventListener("click", (e) => {
   const a = t.closest<HTMLElement>("a[data-i]");
   if (!a) return;
   if (t.closest(".dot")) return clearFresh(patch ? key(patch.files[Number(a.dataset.i)]) : undefined);
+  // One file shown: the list picks which one
+  if (focus && patch) return showFile(key(patch.files[Number(a.dataset.i)]));
   const section = content.querySelector<HTMLElement>(`.file[data-i="${a.dataset.i}"]`)!;
   if (section.classList.contains("collapsed")) toggleFile(section);
-  // An entry of the outline points at a hunk, a file at its header. Near the end of the patch the
-  // target cannot reach the top of the window: the flash shows which one it is.
-  const hunk = a.dataset.src ? section.querySelector<HTMLElement>(`tr.hunk[data-src="${a.dataset.src}"]`) : null;
-  const target = hunk ?? section.querySelector<HTMLElement>(".file-head")!;
-  jumpTo(window.scrollY + target.getBoundingClientRect().top - (hunk ? HEAD + 4 : 41 + 4));
+  // Near the end of the patch the file cannot reach the top of the window: the flash shows which one it is
+  const target = section.querySelector<HTMLElement>(".file-head")!;
+  fileHint = Number(a.dataset.i);
+  jumpTo(window.scrollY + target.getBoundingClientRect().top - (41 + 4));
   flash(target);
 });
 
@@ -764,36 +805,154 @@ $btn("ws-btn").addEventListener("click", () => {
 });
 $btn("side-btn").addEventListener("click", () => {
   sideOpen = !sideOpen;
-  save("side", sideOpen ? "1" : "0");
   render();
+});
+
+// ---- one file alone (--file) -------------------------------------------------------------
+
+/** Shows one file alone (null: all files, with the list). */
+function showFile(path: string | null) {
+  if (!patch) return;
+  const before = focus;
+  wantFocus = path;
+  render();
+  // Back to all files: where the one file was, and the counters say so
+  if (!path && before) {
+    const at = patch.files.findIndex((f) => key(f) === before);
+    const head = content.querySelector<HTMLElement>(`.file[data-i="${at}"] .file-head`);
+    if (head) window.scrollTo(0, window.scrollY + head.getBoundingClientRect().top - (41 + 4));
+    fileHint = at;
+    changeHint = content.querySelector<HTMLElement>(`.file[data-i="${at}"] tr.cs`);
+    spy();
+  }
+}
+
+function stepFile(dir: 1 | -1) {
+  if (!patch || !focus) return;
+  const at = patch.files.findIndex((f) => key(f) === focus) + dir;
+  if (at >= 0 && at < patch.files.length) showFile(key(patch.files[at]));
+}
+
+// The toolbar: files step like Alt+↓/↑ (one file: the next one; all files: the next header),
+// and one file or all of them
+$btn("file-prev").addEventListener("click", () => jumpFile(-1));
+$btn("file-next").addEventListener("click", () => jumpFile(1));
+$btn("one-btn").addEventListener("click", () => {
+  if (!patch) return;
+  if (focus) return showFile(null);
+  // The file being read (the one jumped to, or the one at the top of the view)
+  showFile(key(patch.files[currentFile()]));
+});
+
+/** The index (in the patch) of the file whose part is at the top of the view; -1 above the first. */
+function topFile(): number {
+  let at = -1;
+  content.querySelectorAll<HTMLElement>(".file").forEach((s) => {
+    if (s.getBoundingClientRect().top <= HEAD + 6) at = Number(s.dataset.i);
+  });
+  return at;
+}
+
+// ---- the width of the side panel ---------------------------------------------------------
+
+const grip = document.createElement("div");
+grip.className = "side-grip";
+grip.title = "Drag to change the width (double click: 300 pixels)";
+layout.append(grip);
+grip.addEventListener("pointerdown", (e) => {
+  // No text selection while dragging
+  e.preventDefault();
+  grip.setPointerCapture(e.pointerId);
+  grip.classList.add("dragging");
+  document.body.classList.add("resizing");
+});
+grip.addEventListener("pointermove", (e) => {
+  if (!grip.hasPointerCapture(e.pointerId)) return;
+  document.documentElement.style.setProperty("--side-w", `${sideWidth(e.clientX)}px`);
+});
+const widthDone = () => {
+  grip.classList.remove("dragging");
+  document.body.classList.remove("resizing");
+  save("sideWidth", getComputedStyle(document.documentElement).getPropertyValue("--side-w").replace("px", "").trim());
+  drawRuler();
+};
+grip.addEventListener("pointerup", widthDone);
+grip.addEventListener("dblclick", () => {
+  document.documentElement.style.setProperty("--side-w", "300px");
+  widthDone();
 });
 
 // ---- navigating the changes --------------------------------------------------------------
 
 const changes = () => [...content.querySelectorAll<HTMLElement>("tr.cs")];
 
+/**
+ * The change jumped to last: it stays the current one while it is in view. Where the page cannot
+ * scroll any further (a short patch, its end) the place on the screen would not tell, and F7 would
+ * find the same change again and again.
+ */
+let changeHint: HTMLElement | null = null;
+
+/** The index of the change being read: the one jumped to, else the first one from the top of the view; -1 above all. */
+function currentChange(list: HTMLElement[]): number {
+  const edge = HEAD + 6;
+  if (changeHint) {
+    const at = list.indexOf(changeHint);
+    const box = changeHint.getBoundingClientRect();
+    if (at >= 0 && box.bottom > edge && box.top < window.innerHeight) return at;
+    changeHint = null;
+  }
+  const at = list.findIndex((el) => el.getBoundingClientRect().top >= edge - 8);
+  return at < 0 ? list.length - 1 : at - (list[at].getBoundingClientRect().top > edge + 8 ? 1 : 0);
+}
+
+/** F7 / Shift+F7: the next or previous change, round the corner at either end. */
 function jump(dir: 1 | -1) {
   const list = changes();
   if (!list.length) return;
   const edge = HEAD + 6;
-  let target: HTMLElement | undefined;
-  if (dir === 1) target = list.find((el) => el.getBoundingClientRect().top > edge + 8);
-  else target = [...list].reverse().find((el) => el.getBoundingClientRect().top < edge - 8);
-  target ??= dir === 1 ? list[0] : list[list.length - 1]; // round the corner
+  const now = currentChange(list);
+  const target = list[(now + dir + list.length) % list.length] ?? list[0];
+  changeHint = target;
+  // The file counter follows: the change's file is the one being read now
+  const section = target.closest<HTMLElement>(".file");
+  if (section && !focus) fileHint = Number(section.dataset.i);
   const box = target.getBoundingClientRect();
   jumpTo(window.scrollY + box.top - edge - (window.innerHeight - edge) / 4);
   flash(target);
+  spy();
 }
 
-/** Alt+↓ / Alt+↑: the header of the next or previous file reaches the top. */
+/**
+ * The file jumped to last (all files shown): it counts as the current one while its header is in
+ * view, also near the end of the patch, where it cannot reach the top of the window.
+ */
+let fileHint: number | null = null;
+
+/** The index (in the patch) of the file being read: the one jumped to, else the one at the top. */
+function currentFile(): number {
+  if (fileHint !== null) {
+    const box = content.querySelector(`.file[data-i="${fileHint}"] .file-head`)?.getBoundingClientRect();
+    if (box && box.bottom > HEAD - 36 && box.top < window.innerHeight) return fileHint;
+    fileHint = null;
+  }
+  const first = Number(content.querySelector<HTMLElement>(".file")?.dataset.i ?? 0);
+  return Math.max(topFile(), first);
+}
+
+/** Alt+↓ / Alt+↑ (and ‹ › in the toolbar): the next or previous file; with all files shown its header reaches the top. */
 function jumpFile(dir: 1 | -1) {
-  const edge = 41 + 4;
-  const list = [...content.querySelectorAll<HTMLElement>(".file")];
-  const target =
-    dir === 1 ? list.find((s) => s.getBoundingClientRect().top > edge + 2) : [...list].reverse().find((s) => s.getBoundingClientRect().top < edge - 2);
+  if (focus) return stepFile(dir);
+  const sections = [...content.querySelectorAll<HTMLElement>(".file")];
+  // Above the first file (in the header), forward goes to the first one
+  const pos = fileHint === null && topFile() < 0 ? (dir === 1 ? -1 : 0) : sections.findIndex((s) => Number(s.dataset.i) === currentFile());
+  const target = sections[pos + dir];
   if (!target) return;
-  jumpTo(window.scrollY + target.getBoundingClientRect().top - edge);
+  fileHint = Number(target.dataset.i);
+  changeHint = null;
+  jumpTo(window.scrollY + target.getBoundingClientRect().top - (41 + 4));
   flash(target.querySelector(".file-head")!);
+  spy();
 }
 
 function goBack(forward: boolean) {
@@ -803,13 +962,15 @@ function goBack(forward: boolean) {
 }
 $btn("next-btn").addEventListener("click", () => jump(1));
 $btn("prev-btn").addEventListener("click", () => jump(-1));
+// Up and down within (the changes), left and right across (the files); the jump history moves to
+// Alt+Shift+←/→ and the mouse's back and forward buttons
 onKeys({
   nextChange: () => jump(1),
   prevChange: () => jump(-1),
-  nextSection: () => jumpFile(1),
-  prevSection: () => jumpFile(-1),
-  back: () => goBack(false),
-  forward: () => goBack(true),
+  nextFile: () => jumpFile(1),
+  prevFile: () => jumpFile(-1),
+  jumpBack: () => goBack(false),
+  jumpForward: () => goBack(true),
   toggleNav: () => {
     if (!$btn("side-btn").hidden) $btn("side-btn").click();
   },
@@ -819,16 +980,25 @@ onKeys({
 setKeyHelp([
   ["nextChange", "Next change"],
   ["prevChange", "Previous change"],
-  ["nextSection", "Next file"],
-  ["prevSection", "Previous file"],
-  ["back", "Back to where the last jump started"],
-  ["forward", "Forward again"],
+  ["nextFile", "Next file"],
+  ["prevFile", "Previous file"],
+  ["jumpBack", "Back to where the last jump started (also the mouse's back button)"],
+  ["jumpForward", "Forward again"],
   ["toggleNav", "Show or hide the file list"],
   ["comment", "Comment on the line under the pointer (with --annotate)"],
   ["submit", "Send the comment being written"],
   ["search", "Search"],
 ]);
 $btn("next-btn").title = withKey("Next change", "nextChange");
+$btn("file-prev").title = withKey("Previous file", "prevFile");
+$btn("file-next").title = withKey("Next file", "nextFile");
+// The mouse's back and forward buttons go along the jumps made
+addEventListener("mouseup", (e) => {
+  if (e.button === 3 || e.button === 4) {
+    e.preventDefault();
+    goBack(e.button === 4);
+  }
+});
 $btn("prev-btn").title = withKey("Previous change", "prevChange");
 $btn("side-btn").title = withKey("Files", "toggleNav");
 
@@ -888,15 +1058,16 @@ let spyFrame = 0;
 function spy() {
   cancelAnimationFrame(spyFrame);
   spyFrame = requestAnimationFrame(() => {
-    const edge = HEAD + 6;
     const list = changes();
-    const at = list.findIndex((el) => el.getBoundingClientRect().top >= edge - 8);
-    document.getElementById("chg-count")!.textContent = list.length ? `${at < 0 ? list.length : at + 1} / ${list.length}` : "";
-    let active = -1;
-    content.querySelectorAll<HTMLElement>(".file").forEach((s, i) => {
-      if (s.getBoundingClientRect().top <= edge) active = i;
-    });
-    listEl.querySelectorAll<HTMLElement>("a.f").forEach((a) => a.classList.toggle("active", Number(a.dataset.i) === Math.max(active, 0)));
+    const at = Math.max(0, currentChange(list));
+    document.getElementById("chg-count")!.textContent = list.length ? `${at + 1} / ${list.length}` : "";
+    // The file shown: the one file, or the one whose part is at the top of the view
+    const active = focus && patch ? patch.files.findIndex((f) => key(f) === focus) : currentFile();
+    const files = patch?.files.length ?? 0;
+    document.getElementById("file-count")!.textContent = files ? `${active + 1} / ${files}` : "";
+    $btn("file-prev").disabled = active <= 0;
+    $btn("file-next").disabled = active >= files - 1;
+    listEl.querySelectorAll<HTMLElement>("a.f").forEach((a) => a.classList.toggle("active", Number(a.dataset.i) === active));
   });
 }
 addEventListener("scroll", spy, { passive: true });
@@ -911,6 +1082,7 @@ function reveal(line: number) {
   }
   const at = patch.files.findIndex((f) => line >= f.src && line <= f.srcEnd);
   if (at < 0) return; // in the header: nothing to point at
+  if (focus && key(patch.files[at]) !== focus) showFile(key(patch.files[at]));
   const section = content.querySelector<HTMLElement>(`.file[data-i="${at}"]`)!;
   if (section.classList.contains("collapsed")) toggleFile(section);
   let best: HTMLElement | null = null;
@@ -1034,10 +1206,27 @@ cmEl.addEventListener("click", async (e) => {
   }
 });
 
+/**
+ * Esc closes the window (frame), but comments that reached nobody would be lost with it: the first
+ * Esc shows them in the list and says so, a second one within a few seconds closes anyway.
+ */
+let escWarned = 0;
+keepOpenOnEscape(() => {
+  const unsent = annotating() ? comments.filter((c) => c.state !== "sent").length : 0;
+  if (!unsent || Date.now() - escWarned < 4000) return false;
+  escWarned = Date.now();
+  if (!sideShown()) cmBtn.click();
+  showCommentList();
+  cmEl.insertAdjacentHTML("afterbegin", `<div class="cm-warn">${plural(unsent, "comment")} not sent: they go with the window. Esc again closes anyway.</div>`);
+  cmEl.scrollIntoView({ block: "nearest" });
+  return true;
+});
+
 function goToComment(id: string) {
   const c = comments.find((x) => x.id === id);
   if (!c || !patch) return;
   const at = patch.files.findIndex((f) => fileOf(f) === c.target.file);
+  if (focus && focus !== c.target.file) showFile(c.target.file);
   const section = content.querySelector<HTMLElement>(`.file[data-i="${at}"]`);
   if (!section) return;
   if (section.classList.contains("collapsed")) toggleFile(section);
@@ -1089,6 +1278,7 @@ function noteOf(c: Comment, where: boolean): string {
 function draftCard(): HTMLElement {
   const sends = !!current?.connected;
   const card = inputCard({
+    title: draft?.editing ? "Change comment" : "New comment",
     text: draft?.text,
     placeholder: `${sends ? "A comment for the assistant" : "A comment"} …`,
     hint: `${sends ? "Sent to the program that started Dirq." : "Nothing receives it: it stays here."} Ctrl+Enter, Esc cancels`,

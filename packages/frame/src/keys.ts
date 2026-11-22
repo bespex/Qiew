@@ -3,23 +3,40 @@
  * has the same key in every app. An app says which of them it uses and what they do there;
  * `?` and the menu entry "Keyboard Shortcuts" show the card with exactly those.
  *
- * To change a key, change it here: tooltips, the help card and the handlers follow.
+ * To change a key, change it here: tooltips, the help card and the handlers follow. A gesture may
+ * have more than one key (the first is the one named first).
+ *
+ * The arrows with Alt: up and down move within (the changes of a patch, the headings of a page),
+ * left and right move across (the files of a patch). Where left and right are taken by moving
+ * across, going back along the jumps made is Alt+Shift+←/→ (jumpBack); a viewer that browses
+ * (Marq) keeps Alt+←/→ for back and forward like a browser.
  */
 
 export const KEYS = {
-  nextChange: "F7",
-  prevChange: "Shift+F7",
+  nextChange: ["Alt+ArrowDown", "F7"],
+  prevChange: ["Alt+ArrowUp", "Shift+F7"],
+  nextFile: "Alt+ArrowRight",
+  prevFile: "Alt+ArrowLeft",
   nextSection: "Alt+ArrowDown",
   prevSection: "Alt+ArrowUp",
   back: "Alt+ArrowLeft",
   forward: "Alt+ArrowRight",
+  jumpBack: "Alt+Shift+ArrowLeft",
+  jumpForward: "Alt+Shift+ArrowRight",
   toggleNav: "Ctrl+Shift+O",
   comment: "Ctrl+Alt+M",
+  close: "Escape",
   submit: "Ctrl+Enter",
   search: "Ctrl+F",
   help: "?",
 } as const;
 export type KeyId = keyof typeof KEYS;
+
+/** The keys of a gesture. */
+export const combos = (id: KeyId): readonly string[] => {
+  const k: string | readonly string[] = KEYS[id];
+  return typeof k === "string" ? [k] : k;
+};
 
 export interface KeyLike {
   key: string;
@@ -48,11 +65,15 @@ export function matches(e: KeyLike, combo: string): boolean {
 const NAMES: Record<string, string> = { ArrowDown: "↓", ArrowUp: "↑", ArrowLeft: "←", ArrowRight: "→", Escape: "Esc" };
 
 /** "Alt+ArrowDown" → "Alt+↓". */
-export function keyLabel(id: KeyId): string {
-  return KEYS[id]
+const label = (combo: string) =>
+  combo
     .split("+")
     .map((p) => NAMES[p] ?? p)
     .join("+");
+
+/** The keys of a gesture as people read them: "Alt+↓, F7". */
+export function keyLabel(id: KeyId): string {
+  return combos(id).map(label).join(", ");
 }
 
 /** A tooltip that names its key: "Next file (Alt+↓)". */
@@ -70,8 +91,9 @@ export type KeyHandlers = Partial<Record<KeyId, (e: KeyboardEvent) => void>>;
 export function onKeys(handlers: KeyHandlers) {
   document.addEventListener("keydown", (e) => {
     for (const [id, run] of Object.entries(handlers) as [KeyId, (e: KeyboardEvent) => void][]) {
-      if (!matches(e, KEYS[id])) continue;
-      if (typing(e.target) && !worksInFields(KEYS[id])) return;
+      const combo = combos(id).find((c) => matches(e, c));
+      if (!combo) continue;
+      if (typing(e.target) && !worksInFields(combo)) return;
       e.preventDefault();
       run(e);
       return;
@@ -99,7 +121,9 @@ export function toggleHelp() {
   card.setAttribute("aria-label", "Keyboard shortcuts");
   card.innerHTML =
     `<div class="keys-card"><h2>Keyboard Shortcuts</h2><table>` +
-    entries.map(([id, what]) => `<tr><td>${keyLabel(id).split("+").map((k) => `<kbd>${esc(k)}</kbd>`).join("+")}</td><td>${esc(what)}</td></tr>`).join("") +
+    entries
+      .map(([id, what]) => `<tr><td>${combos(id).map((c) => label(c).split("+").map((k) => `<kbd>${esc(k)}</kbd>`).join("+")).join(" or ")}</td><td>${esc(what)}</td></tr>`)
+      .join("") +
     `</table><p>Press <kbd>?</kbd> or <kbd>Esc</kbd> to close.</p></div>`;
   card.addEventListener("click", (e) => {
     if (e.target === card) closeHelp();
@@ -113,7 +137,7 @@ export function toggleHelp() {
  * reached without knowing `?`.
  */
 export function setKeyHelp(list: [KeyId, string][]) {
-  entries = [...list, ["help", "Show or hide this list"]];
+  entries = [...list, ["close", "Close the window (when nothing else is open)"], ["help", "Show or hide this list"]];
   document.addEventListener("keydown", (e) => {
     if (card && e.key === "Escape") {
       e.preventDefault();

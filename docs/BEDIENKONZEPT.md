@@ -52,13 +52,15 @@ Abschnitt „Kommentare“ im Feld links. Alles Weitere erscheint nur dort, wo m
 
 Zwei Regeln: **Vertrautes übernehmen** (was Qiew und IDEs schon sagen) und **keine Einzelbuchstaben**, weil man dort
 Tippen vermutet und sie sich schlecht merken lassen. Das ersetzt die Buchstaben-Belegung (J/K/N/P/U/V/C/O), die als nicht
-intuitiv bewertet wurde.
+intuitiv bewertet wurde. Dazu (2026-11-22): **mit Alt bewegen die Pfeile senkrecht innerhalb** (Änderungen, Überschriften)
+**und waagrecht quer** (Dateien eines Patches).
 
 | Taste | Dirq | Marq | Herkunft |
 |---|---|---|---|
-| **F7 / Umschalt+F7** | nächste/vorige Änderung | nächster/voriger Kommentar (auch ohne `--annotate`) | gibt es in Dirq heute; IntelliJ |
-| **Alt+↓ / Alt+↑** | nächste/vorige Datei | nächste/vorige Überschrift | „Abschnitt weiter“ in beiden Apps gleich |
-| **Alt+← / Alt+→** | zurück/vor im Sprungverlauf | zurück/vor (gibt es) | Browser |
+| **Alt+↓ / Alt+↑** | nächste/vorige Änderung | nächste/vorige Überschrift | innerhalb des Dokuments |
+| **F7 / Umschalt+F7** | nächste/vorige Änderung (zusätzlich) | nächster/voriger Kommentar (auch ohne `--annotate`) | IntelliJ |
+| **Alt+→ / Alt+←** | nächste/vorige Datei | zurück/vor (gibt es) | Dirq: quer durch den Patch; Marq: Browser |
+| **Alt+Umschalt+← / →**, Maustasten zurück/vor | zurück/vor im Sprungverlauf | – | weil Alt+←/→ in Dirq die Dateien sind |
 | **Strg+Umschalt+O** | Dateien ein/aus | Gliederung ein/aus (gibt es) | Marq heute |
 | **Strg+Alt+M** | Kommentar an der Stelle unter dem Zeiger, sonst an der zuletzt angesprungenen | dasselbe | „Kommentar einfügen“ in Word und Docs |
 | **Strg+Enter / Esc** | senden / abbrechen | speichern / abbrechen | Strg+Enter heißt in Xaq und Jayq schon „ausführen“ |

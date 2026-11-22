@@ -3,7 +3,7 @@
 //! viewer knowing about it.
 //!
 //! ```text
-//! <app> [<file> | -] [--line <n>] [--geometry <W>x<H>+<X>+<Y>] [--reuse] [--annotate] [--id <text>] [--repo <path>]
+//! <app> [<file> | -] [--line <n>] [--geometry <W>x<H>+<X>+<Y>] [--reuse] [--annotate] [--id <text>] [--repo <path>] [--file <part>]
 //! ```
 //!
 //! - `-` reads the document from standard input (`git diff | dirq -`). It is
@@ -24,6 +24,8 @@
 //!   Dirq sends them to the program that started it).
 //! - `--repo <path>` lets an app look into this Git repository, read-only
 //!   (Dirq: more context around a change). Per call and file, like `--annotate`.
+//! - `--file <part>` names the part of the document to show (Dirq: one file of a patch, shown
+//!   alone). Per call, like `--id`; a call without it shows the whole document.
 //! - `CODEDECK_SOCKET` in the environment of the call names where comments are
 //!   sent. It allows nothing by itself; it travels with `--reuse` like the
 //!   options, since the running window may have been started by another program.
@@ -50,7 +52,7 @@ use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize};
 use crate::AppInfo;
 
 /// Options that are followed by a value (which is therefore not the file).
-const WITH_VALUE: &[&str] = &["--line", "--geometry", "--export-html", "--id", "--repo"];
+const WITH_VALUE: &[&str] = &["--line", "--geometry", "--export-html", "--id", "--repo", "--file"];
 
 /// Where a window is to be: content size and position in physical pixels.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -97,6 +99,8 @@ pub struct Launch {
     pub id: Option<String>,
     /// The repository the app may read from (`--repo`).
     pub repo: Option<String>,
+    /// The part of the document to show (`--file`).
+    pub focus: Option<String>,
 }
 
 impl Launch {
@@ -111,6 +115,7 @@ impl Launch {
                 "--annotate" => launch.annotate = true,
                 "--id" => launch.id = args.next().filter(|v| !v.is_empty()),
                 "--repo" => launch.repo = args.next().filter(|v| !v.is_empty()),
+                "--file" => launch.focus = args.next().filter(|v| !v.is_empty()),
                 "-" if launch.file.is_none() => launch.file = Some(arg),
                 flag if WITH_VALUE.contains(&flag) => drop(args.next()),
                 flag if flag.starts_with('-') => {}
@@ -127,6 +132,8 @@ static LAUNCH: OnceLock<Launch> = OnceLock::new();
 static LINE: Mutex<Option<u32>> = Mutex::new(None);
 /// The id the call that opened the current document gave it (`--id`).
 static DOC_ID: Mutex<Option<String>> = Mutex::new(None);
+/// The part of it that call asked to show (`--file`).
+static DOC_FOCUS: Mutex<Option<String>> = Mutex::new(None);
 /// The file standard input was written to, to be removed on exit.
 static STDIN_FILE: Mutex<Option<PathBuf>> = Mutex::new(None);
 /// What the call that named a file allowed for it, by this call or a later one (`--reuse`).
@@ -203,6 +210,9 @@ struct Handover {
     /// Missing from older viewers: no repository.
     #[serde(default)]
     repo: Option<String>,
+    /// Missing from older viewers: the whole document.
+    #[serde(default)]
+    focus: Option<String>,
 }
 
 /// The app's own directory for what lives only while it runs.
@@ -293,6 +303,7 @@ pub(crate) fn init(info: &AppInfo) -> bool {
             id: launch.id.clone(),
             codedeck_socket: codedeck_socket.clone(),
             repo: launch.repo.clone(),
+            focus: launch.focus.clone(),
         };
         if let Ok(message) = serde_json::to_string(&handover)
             && writeln!(running, "{message}").is_ok()
@@ -306,6 +317,7 @@ pub(crate) fn init(info: &AppInfo) -> bool {
     }
     *STDIN_FILE.lock().unwrap() = from_stdin;
     *DOC_ID.lock().unwrap() = launch.id.clone();
+    *DOC_FOCUS.lock().unwrap() = launch.focus.clone();
     *LINE.lock().unwrap() = launch.line;
     let _ = LAUNCH.set(launch);
     false
@@ -336,6 +348,7 @@ pub(crate) fn listen(app: &AppHandle, info: &AppInfo) {
             let Ok(handover) = serde_json::from_str::<Handover>(&message) else { continue };
             *LINE.lock().unwrap() = handover.line;
             *DOC_ID.lock().unwrap() = handover.id.clone();
+            *DOC_FOCUS.lock().unwrap() = handover.focus.clone();
             // The grants of the call that sent it, not those of the call that started this window
             if let Some(file) = handover.file.as_deref() {
                 set_grants(
@@ -379,6 +392,12 @@ pub(crate) fn clean_up(info: &AppInfo) {
 #[tauri::command]
 pub fn doc_id() -> Option<String> {
     DOC_ID.lock().unwrap().clone()
+}
+
+/// The part of the current document the call that opened it asked to show (`--file`), if any.
+#[tauri::command]
+pub fn doc_focus() -> Option<String> {
+    DOC_FOCUS.lock().unwrap().clone()
 }
 
 /// The line to show in the file just opened, once.
@@ -426,6 +445,9 @@ mod tests {
         assert_eq!((l.repo.as_deref(), l.file.as_deref(), l.id.as_deref()), (Some("/work/project"), Some("-"), Some("x")));
         assert_eq!(launch(&["a.patch", "--repo", ""]).repo, None);
         assert_eq!(launch(&["a.patch"]).repo, None);
+        let l = launch(&["-", "--reuse", "--file", "src/limit.rs", "--id", "x"]);
+        assert_eq!((l.file.as_deref(), l.focus.as_deref()), (Some("-"), Some("src/limit.rs")), "the part is not the file");
+        assert_eq!(launch(&["a.patch", "--file", ""]).focus, None);
     }
 
     #[test]
@@ -459,7 +481,7 @@ mod tests {
         assert_eq!(old.id, None, "an older viewer names no document");
         let new: Handover = serde_json::from_str(r#"{"file":"a.patch","line":null,"geometry":null,"id":"round 7"}"#).unwrap();
         assert_eq!(new.id.as_deref(), Some("round 7"));
-        assert_eq!((old.codedeck_socket, old.repo), (None, None));
+        assert_eq!((old.codedeck_socket, old.repo, old.focus), (None, None, None));
         let full = Handover {
             file: Some("/run/dirq/stdin-1.patch".into()),
             line: None,
@@ -468,6 +490,7 @@ mod tests {
             id: Some("x".into()),
             codedeck_socket: Some("/run/codedeck/1.sock".into()),
             repo: Some("/work".into()),
+            focus: Some("src/a.rs".into()),
         };
         let back: Handover = serde_json::from_str(&serde_json::to_string(&full).unwrap()).unwrap();
         assert_eq!((back.annotate, back.codedeck_socket.as_deref(), back.repo.as_deref()), (true, Some("/run/codedeck/1.sock"), Some("/work")));
