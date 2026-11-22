@@ -1,9 +1,10 @@
 # Qiew: ein Bedienkonzept für Kommentare, Navigation und Zusammenarbeit mit CodeDeck
 
-Stand 2026-11-21. Entwurf zur Abstimmung, nichts ist gebaut. Entstanden aus den Ideen für Marq
-(`apps/marq/IDEEN.md`) und Dirq (`apps/dirq/IDEEN.md`) und den Entscheidungen des Nutzers dazu. Hier steht, was für
-**alle** Betrachter gelten soll, damit Marq und Dirq sich wie ein Programm anfühlen. Die Einzelheiten der Apps stehen
-in deren `IDEEN.md`; die Prioritäten in `apps/dirq/IDEEN.md`, Abschnitt „Abstimmung vom 2026-11-21“.
+Stand 2026-11-22. Gebaut: die Tasten an einer Stelle (`packages/frame/src/keys.ts`), Sprungverlauf, Hilfe, Randleiste
+und Aufblitzen (Dirq), die Kommentare in Marq und Dirq mit Randknopf, Eingabekarte und Notiz aus dem Rahmen
+(`packages/frame/src/annotate.ts`). Das Navigationsfeld im Rahmen ist noch nicht gebaut; es steht wie alles Künftige in
+den `PLAN.md`-Dateien (Wurzel und `apps/<app>/`). Einzelheiten zu Marq stehen in `apps/marq/KOMMENTARE.md`, zu den
+Freigaben in `docs/ANNOTATE.md`.
 
 ## 1. Leitgedanken
 
@@ -64,9 +65,7 @@ intuitiv bewertet wurde.
 | **Strg+F, F3** | Suche | Suche | gibt es |
 | **?** | Hilfe | Hilfe | |
 
-**Offen zur Abstimmung:** Alt+↑/↓ für Abschnitte könnte mit Fenstermanagern kollidieren (unter Linux selten, aber
-möglich); Alternative Strg+↓/↑. Strg+Alt+M fühlt sich für Linux-Nutzer ungewohnt an, die Alternative wäre Strg+Umschalt+M.
-Beide Vorschläge sind austauschbar, solange es eine Stelle im Rahmen gibt, an der die Belegung steht.
+Ob Alt+↑/↓ und Strg+Alt+M so bleiben, steht als Brainstorm-Idee im Wurzel-`PLAN.md`.
 
 ## 4. Kommentieren als Ganzes
 
@@ -102,19 +101,18 @@ weil Kommentare in einer Datei auch für Menschen sein können: `@ai` für die K
 
   Die `id` vergibt Dirq. CodeDeck braucht deshalb keine Antwort (Entscheidung: kein Rückkanal von CodeDeck zu Dirq,
   vorerst).
-- **Seite des Diffs:** Kommentierbar sind Zeilen der neuen Seite (Kontext und Hinzugefügtes). Für eine **gelöschte**
-  Zeile ist nur die alte Seite sinnvoll; CodeDeck kennt heute nur die neue Seite. Vorschlag: Das Feld `side: "old"` ist
-  optional, fehlt es, gilt „neu“; CodeDeck zeigt der KI dann `(gelöschte Zeile) …`. **Mit CodeDeck abzustimmen.**
+- **Seite des Diffs:** Kommentierbar sind Kontext-, hinzugefügte und gelöschte Zeilen. Eine gelöschte Zeile wird mit
+  der nächsten Zeile der neuen Seite gesendet, ihr Text beginnt mit `(gelöschte Zeile) ` (`docs/ANNOTATE.md`, 4).
 - **Wiederfinden beim Live-Reload:** Die Karten im Fenster hängen an Datei + Zeilentext, nicht an der Zeilennummer. Ändert
   die laufende Runde den Patch (B4), bleiben sie an ihrer Zeile; findet sich der Text nicht mehr, wird die Karte
   gedämpft mit „Zeile geändert“ angezeigt, nicht gelöscht.
 - **Neue Runde in einem frischen Patch:** Dirq kennt die alten Kommentare nicht mehr (kein Rückkanal). Sie liegen weiter
-  bei CodeDeck, im Reiter Änderungen und im nächsten Prompt. Soll Dirq sie wiedersehen, wäre das ein kleiner, späterer
-  Kopf im Patch (`X-CodeDeck-Note: <datei>:<zeile> <text>`, wie für „gesehen“ erwogen); nicht jetzt.
+  bei CodeDeck, im Reiter Änderungen und im nächsten Prompt. Dass Dirq sie wiedersieht, steht als Idee in
+  `apps/dirq/PLAN.md`.
 
 ### Marq im Einzelnen
 
-Siehe `apps/marq/IDEEN.md` (Typen, Status, Format, Einfügestelle je Blockart, Zusicherungen, sicheres Schreiben).
+Siehe `apps/marq/KOMMENTARE.md` (Typen, Status, Format, Einfügestelle je Blockart, Zusicherungen, sicheres Schreiben).
 Neu aus dem Gesamtbild:
 Eingabekarte, Notizkarte und Randknopf kommen aus dem Rahmen und sind **dieselben** wie in Dirq; F7 springt in Marq zum
 nächsten Kommentar; Aufblitzen zeigt nach einem Live-Reload, welche Blöcke die KI gerade geändert hat.
@@ -128,9 +126,9 @@ nächsten Kommentar; Aufblitzen zeigt nach einem Live-Reload, welche Blöcke die
   Patches Informationen mit, und über `--reuse` neue Inhalte, aber nichts kommt als Antwort zurück.
 - **CodeDeck muss keine neuen Formate verstehen:** für Marq genügt die Suche nach `<!-- @`; für Dirq ist
   `line_comment` das Format, das CodeDeck als `Note` schon kennt.
-- **Was CodeDeck für die Freigaben tun muss** (Liste für `apps.rs`): `--annotate` für Marq (Markdown-Dateien des
-  Projekts) und Dirq setzen; `CODEDECK_SOCKET` für Dirq; `--repo` für Dirq; eine Zeile in `CLAUDE.md` für `@ai`-
-  Kommentare; ein Schalter „Live in Dirq“ an einer laufenden Runde (B4).
+- **Was CodeDeck für die Freigaben tut** (gebaut, `apps.rs`): `--annotate` für Marq (Markdown-Dateien des Projekts) und
+  für Dirq (nur Patches des Arbeitsordners), `CODEDECK_SOCKET` und `--repo` für Dirq. „Live in Dirq“ steht in
+  `apps/dirq/PLAN.md`.
 
 ## 6. Entschieden und offen
 
@@ -142,10 +140,5 @@ nächsten Kommentar; Aufblitzen zeigt nach einem Live-Reload, welche Blöcke die
 - Marq löscht oder hakt nie von selbst ab; beides wählt der Nutzer. Ob die KI löscht oder abhakt, legt CodeDeck in
   seiner Anleitung fest.
 
-**Offen:**
-
-1. Tastenbelegung (Abschnitt 3) bestätigen oder ändern.
-2. Alt+↑/↓ oder Strg+↑/↓ für „nächster Abschnitt“?
-3. Gelöschte Zeilen in Dirq kommentierbar machen (`side: "old"`), mit CodeDeck abstimmen?
-4. Reicht für Dirq der Randknopf an *Zeilen*, oder soll man auch einen **Bereich** aufziehen können (mehrere Zeilen,
-   mit der Maus über die Zeilennummern)? Bei CodeDeck sind es einzelne Zeilen.
+Weiter entschieden (2026-11-21/22): Gelöschte Zeilen sind in Dirq kommentierbar (ohne Feld `side`, die KI liest es aus
+dem Text); kommentiert wird je eine Zeile, kein Bereich. Was noch offen ist, steht in den `PLAN.md`-Dateien.

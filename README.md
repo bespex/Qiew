@@ -154,6 +154,11 @@ tree, whose line numbers are those of the files on disk), set the variable, take
 of the next prompt, and prefer the be spex viewers in its list. With Dirq installed, CodeDeck's Changes show
 the files and Dirq shows their diffs (a double click on a file).
 
+## Plans
+
+What is to come is in one place per app: `apps/<app>/PLAN.md`, and `PLAN.md` here for what all viewers share.
+Each has "Brainstorm-Ideen" (undecided, a list) and "Geplante Umsetzungen" (decided, one section each).
+
 ## Release
 
 Each app has its own version and its own tag. Bump the version in `apps/<app>/package.json`,

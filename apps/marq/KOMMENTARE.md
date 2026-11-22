@@ -1,20 +1,14 @@
 # Marq: Blöcke kommentieren (Typen `@ai`, `@me`, `@you`)
 
-Stand 2026-11-21. Schritt 1 bis 4 der Reihenfolge sind gebaut: der Kern (`src/annotate.ts`, Tests in
-`src/annotate.test.ts`), die Anzeige (`src/notes.ts`, Tests in `src/notes.test.ts`; `npm test`), `--annotate` mit dem
-sicheren Schreiben (`crates/frame/src/launch.rs`, `src-tauri/src/annotate.rs`, `src/write.ts`; `cargo test`) und die
-Bedienung (`src/annotate-ui.ts`). Offen ist Schritt 5 (Gliederung, Liste, Suche).
-
-Das Zusammenspiel mit Dirq und CodeDeck (gleiche Gesten, Rahmenbausteine, Tasten) steht in `docs/BEDIENKONZEPT.md`.
-
-Das Papier hat zwei Teile, die man nicht vermischen soll:
-
-1. **Unser Plan:** Was Marq selbst kann. Marq kennt nur die Datei, das Format und den Startparameter.
-2. **Was CodeDeck damit macht:** Alles, was auf Marqs Fähigkeit aufsetzt. Marq muss davon nichts wissen.
+Stand 2026-11-22. Beschreibung des gebauten Kommentierens in Marq: Format, Einfügestellen, Zusicherungen, sicheres
+Schreiben. Der Kern steht in `src/annotate.ts` (Tests `src/annotate.test.ts`), die Anzeige in `src/notes.ts`, das
+Schreiben in `src-tauri/src/annotate.rs` und `src/write.ts`, die Bedienung in `src/annotate-ui.ts`. Randknopf,
+Eingabekarte und die einzelne Notiz kommen aus dem Rahmen (`@qiew/frame/annotate`), gleich wie in Dirq; Gesten und
+Tasten stehen in `docs/BEDIENKONZEPT.md`. Was noch kommen soll, steht in `PLAN.md`.
 
 ---
 
-# Teil 1: Unser Plan (Marq)
+# Was Marq kann
 
 ## Entscheidung
 
@@ -160,28 +154,10 @@ Beim Bauen präzisiert:
 - **Abgelehnt** (Meldung statt Schreiben): Tabs in der Einrückung, Listeneinträge mit leerer erster Zeile, Blöcke
   im Front Matter, Kommentare an Kommentaren.
 
-## Ausgangslage im Code
-
-- `src/main.ts`: Die Regel `source_lines` setzt an jeden Block `data-line` (Startzeile, 1-basiert, aus `tok.map`).
-  Das ist die Einfügestelle.
-- `markdown` wird mit `html: true` gerendert, danach läuft `DOMPurify.sanitize`. **DOMPurify entfernt HTML-Kommentare.**
-  Zum Anzeigen müssen sie vorher in der markdown-it-Pipeline erkannt und in ein eigenes Element verwandelt werden
-  (Regel über `html_block`-Tokens, die mit `<!--` und einem bekannten `@typ` beginnen; der Block danach bekommt den
-  Verweis).
-- `render()` läuft bei jedem Live-Reload. Marq löst durch eigenes Schreiben selbst einen Reload aus. Der behält die
-  Scrollposition (`keepScroll`); das Neuzeichnen von Diagrammen ist zu beachten.
-- `crates/frame` kennt Startoptionen (`--line`, `--geometry`, `--reuse`). `--annotate` gehört dorthin oder in
-  `src-tauri/src/lib.rs`. Schreiben in Rust, damit Rechte, Zeilenenden und Atomarität an einer Stelle liegen.
-- Die README verspricht „never writes to your files“. Das muss ehrlich umformuliert werden: „…unless started with
-  `--annotate`, and then only to add, tick or remove comment lines.“
-
 ## Lesen und Anzeigen
 
 - Mit `--annotate`: Ein Block mit Kommentar bekommt einen Streifen im Rand in der Typfarbe und eine Blase mit dem
   Text. Klick öffnet Bearbeiten; dort stehen Abhaken und Löschen.
-- Gliederung (`outline.ts`): Zähler offener Kommentare je Überschrift, Filter nach Typ. Eine Liste „Alle
-  Kommentare“ zum Springen.
-- Suche (`@qiew/frame/search`): Kommentartexte durchsuchbar, wenn sie angezeigt werden.
 - Ohne `--annotate` (**entschieden**): Vorhandene Kommentare werden dezent angezeigt (kleiner Marker in der
   Typfarbe, Text beim Überfahren oder Anklicken), aber es gibt **keine Aktionen**: kein „+“, kein Bearbeiten, kein
   Abhaken, kein Löschen. Wer ein Dokument von anderen bekommt, sieht so, dass darin Anweisungen an eine KI stehen.
@@ -244,31 +220,17 @@ eigenes `color-scheme` nach dem System setzt).
   übersprungen. Eine offene Notizkarte geht am selben Block wieder auf.
 - Live-Reload während des Tippens (die KI ändert die Datei): Randknopf und Eingabekarte liegen auf einer eigenen
   Ebene außerhalb der Seite, der Text bleibt, die Karte findet ihren Block wieder.
-- Randknopf, Eingabekarte und Notizkarte sind vorerst in Marq gebaut, nicht im Rahmen (`packages/frame`), wie es
-  `docs/BEDIENKONZEPT.md` vorsieht: Sie wandern dorthin, wenn Dirq sie bekommt und die Schnittstelle zwei Nutzer hat.
+- Randknopf, Eingabekarte und die einzelne Notiz kommen seit 2026-11-22 aus dem Rahmen (`@qiew/frame/annotate`,
+  dieselben wie in Dirq); Marq legt nur fest, wo sie stehen. Die Texte der Bedienung sind englisch wie der Rest von Marq.
 
 Tasten und Gesten (Randknopf, Eingabekarte, F7 usw.) kommen aus dem Rahmen und stehen in `docs/BEDIENKONZEPT.md`.
-
-## Reihenfolge
-
-1. `src/annotate.ts`: Einfügen, Löschen, Abhaken, Lesen als **reine Funktionen** mit den Tests Z1 bis Z5 und Z8.
-   Das ist der Kern, er wird zuerst gebaut und muss grün sein.
-2. Lesen: Kommentare mit Typ und Status am Block anzeigen (ohne Schreiben).
-3. Startparameter `--annotate`, Schreiben in Rust (atomar, Neulesen, Zeilenenden), Tests Z6 und Z7.
-4. „+“, Typwahl, Textfeld, Bearbeiten, Abhaken, Löschen.
-5. Gliederung, Liste, Suche. README.
 
 ## Entschieden (2026-11-21)
 
 - Parametername ist `--annotate`, wie auch in Dirq geplant.
 - Vorhandene Kommentare werden auch ohne den Parameter dezent angezeigt, nur ohne Aktionen.
-- Anker sind Blöcke. Eine Textstelle ließe sich später als Zitat im Kommentar festhalten
-  (`<!-- @ai["Once, add"]: … -->`), ohne alte Kommentare zu brechen; jetzt nicht gebaut.
+- Anker sind Blöcke (eine Textstelle als Anker steht in `PLAN.md` unter den Brainstorm-Ideen).
 - Typen sind `@ai`, `@me`, `@you`. Weitere kommen über die eine Typliste dazu.
-
-## Offen (Marq)
-
-Nichts mehr vor Schritt 1 der Reihenfolge.
 
 ## Hinweise für die Umsetzung
 
@@ -280,42 +242,15 @@ Nichts mehr vor Schritt 1 der Reihenfolge.
   Kommentar, kein Block. Nur am Zeilenanfang entsteht ein `html_block`. Das Lesen sucht deshalb `html_block`.
 - **Testrahmen:** Vitest (passt zu Vite), `npm test` in `apps/marq`. Testdateien sind vom `tsc` der App
   ausgenommen (`tsconfig.json`).
-- **`docs/BEDIENKONZEPT.md` ist teils überholt** durch diese Entscheidungen: Es nennt `@ai` einen „vorbelegten Chip“
-  und sagt, in Dirq entfalle die Marke. Jetzt gibt es in Marq eine Typwahl (`@ai`, `@me`, `@you`), den Status
-  (`@typ#erledigt`) und die dezente Anzeige ohne `--annotate`. Ebenso die Frage 4 dort (Löschen oder Ersetzen):
-  entschieden ist „Marq bietet beides an, der Nutzer wählt“.
 - **Aufgabenteilung bleibt:** Teil 1 gehört zu Marq, Teil 2 zu CodeDeck. Der Nutzer hält erledigte Kommentare im Text
   nicht für gut, das ist aber Sache von CodeDeck und kein Marq-Thema.
 
 ---
 
-# Teil 2: Was CodeDeck damit macht
+# Was CodeDeck damit macht
 
-Marq liefert nur Datei, Format und Startparameter. Alles Folgende ist Sache von CodeDeck (oder der KI-Anleitung) und
-verlangt von Marq nichts außer den Teilen oben. Zum Entscheiden, nicht zum Bauen in Marq.
-
-**Gebaut in CodeDeck (2026-11-21, `docs/QIEW.md` dort):** CodeDeck startet Marq für Projektdateien mit `--annotate`.
-Die `@ai`-Kommentare sind dort gewöhnliche Hinweise (Regel D18, `markers.rs`), jetzt auch in Listeneinträgen und
-Zitaten und mehrzeilig. Sie gehen nur mit, wenn der Nutzer sie per Büroklammer anhängt (damit ist die Prompt-Injection
-unten erledigt). **Entschieden:** Die KI **löscht** einen erledigten Kommentar, sie hakt nicht ab; Abhaken bleibt
-ein Handgriff des Nutzers in Marq. Abgehakte Kommentare zählen in CodeDeck nicht als Hinweis.
-
-- **Start:** CodeDeck startet Marq mit `--annotate` (zusammen mit `--reuse`, wenn es das Fenster wiederverwendet).
-  Wie es das pro Dokument entscheidet, ist seine Sache; Marq beachtet den Parameter je Aufruf.
-- **Anleitung für die KI** in `CLAUDE.md`/`AGENTS.md`: Kommentare `<!-- @ai: … -->` sind Arbeitsaufträge für den
-  folgenden Block. Die Erledigung zeigt sich als Diff in Dirq: Kommentar weg oder auf `@ai#erledigt:` gesetzt, Text
-  geändert. Ob die KI löscht oder abhakt, legt CodeDeck in dieser Anleitung fest.
-- **Prompt-Injection:** Wenn die KI jedes `@ai` abarbeitet, kann jede fremde Markdown-Datei (geklontes Repo,
-  Issue, Doku) sie steuern. Die Regel sollte lauten: Kommentare nur abarbeiten, wenn der Nutzer es für diese Datei
-  verlangt. `@me` und `@you` liest die KI nie als Auftrag.
-- **Direkt an die KI senden:** CodeDeck könnte offene `@ai`-Kommentare mit Dateipfad und Zeilen als Prompt in die
-  laufende Session geben („Kommentare abarbeiten“). Dann braucht die KI die Anleitung kaum, und der Nutzer löst es
-  bewusst aus.
-- **Aufräumen vor dem Commit:** Kommentare gehören zum Dokument und stünden im Commit. CodeDeck kann „N offene
-  Kommentare in dieser Datei“ anzeigen oder vor dem Commit warnen; Zählen und Auflisten genügt als Suche nach
-  `<!-- @` (ein regulärer Ausdruck, kein Format). Erledigte Kommentare (`@typ#erledigt`) kann CodeDeck gesammelt
-  löschen.
-- **Dirq:** Kommentare an Diff-Zeilen sind ein anderer Mechanismus (kein Dokument, in das man schreiben könnte) und
-  gehören nach `apps/dirq/IDEEN.md` und `docs/BEDIENKONZEPT.md`.
-- **Andere Renderer:** Ein paar Programme zeigen HTML-Kommentare an (Chat-Fenster, einfache Vorschauen). In Marq und
-  auf GitHub sind sie unsichtbar; das ist hinzunehmen.
+CodeDeck startet Marq für Projektdateien mit `--annotate`. Die `@ai`-Kommentare sind dort gewöhnliche Hinweise (Regel
+D18, `markers.rs`), auch in Listeneinträgen und Zitaten und mehrzeilig; sie gehen nur mit, wenn der Nutzer sie per
+Büroklammer anhängt. Die KI **löscht** einen erledigten Kommentar, sie hakt nicht ab; Abhaken bleibt ein Handgriff des
+Nutzers in Marq. Abgehakte Kommentare zählen in CodeDeck nicht als Hinweis. Weiteres auf CodeDeck-Seite steht in
+CodeDecks `docs/QIEW.md`.
