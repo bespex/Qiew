@@ -1,7 +1,10 @@
 # Dirq: Umsetzungsplan
 
-Stand 2026-11-21. Grundlage: `IDEEN.md` (Abschnitt „Abstimmung vom 2026-11-21“) und `docs/BEDIENKONZEPT.md`. Gebaut ist noch
-nichts. Marq ist nicht Teil dieses Plans (eigene Session, ihre Dateien werden hier **nicht** angefasst); wo der Rahmen gemeinsam ist,
+Stand 2026-11-22. Grundlage: `IDEEN.md` (Abschnitt „Abstimmung vom 2026-11-21“) und `docs/BEDIENKONZEPT.md`. **Gebaut: Phasen
+1–4 (Dirq 0.3.0) und 5–6 (Dirq 0.4.0, noch nicht veröffentlicht) samt den CodeDeck-Folgen von Phase 5 und 6.** CodeDeck ersetzt
+die eingebettete Diff-Ansicht, sobald Dirq installiert ist: Doppelklick auf eine Datei öffnet den ganzen Patch an ihr. Offen:
+der Schalter „Live in Dirq“ (Phase-4-Folge in CodeDeck) und die Phasen 7–9. Randknopf und Karten liegen noch in Dirq
+(`src/main.ts`) und in Marq (`annotate-ui.ts`) getrennt; eine Verallgemeinerung in `packages/frame` steht aus. Marq ist nicht Teil dieses Plans (eigene Session, ihre Dateien werden hier **nicht** angefasst); wo der Rahmen gemeinsam ist,
 steht es unter „Abstimmung mit der Marq-Session“.
 
 **Verbindliche Parameter-Beschreibung: `docs/ANNOTATE.md`** (was `--annotate`, `--repo` und `CODEDECK_SOCKET` genau

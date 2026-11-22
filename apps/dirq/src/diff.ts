@@ -21,6 +21,9 @@ export interface Hunk {
   section: string; // what follows the second @@ (a function name, usually)
   oldStart: number;
   newStart: number;
+  /** How many lines of each side the hunk covers, as its header says. */
+  oldCount: number;
+  newCount: number;
   lines: DiffLine[];
   src: number;
 }
@@ -36,6 +39,9 @@ export interface FileDiff {
   /** What the --- and +++ lines say besides the path: a revision, a date. */
   oldInfo?: string;
   newInfo?: string;
+  /** The blobs of both sides, from the `index abc123..def456` line (abbreviated object names). */
+  oldBlob?: string;
+  newBlob?: string;
   hunks: Hunk[];
   added: number;
   deleted: number;
@@ -54,6 +60,11 @@ export interface Meta {
   trailers: [string, string][];
   /** Header lines the patch carries that mean nothing to a reader (kept for completeness). */
   other: string[];
+  /**
+   * `X-CodeDeck-Session`: the session of CodeDeck the patch belongs to. Sent along with comments
+   * (only with --annotate); not shown.
+   */
+  session?: string;
 }
 
 export interface Patch {
@@ -74,6 +85,8 @@ export function outline(file: FileDiff): { section: string; hunk: Hunk }[] {
 }
 
 const TRAILER_KEY = /^[A-Za-z][A-Za-z0-9-]*$/;
+/** The header line by which CodeDeck says which of its sessions a patch belongs to (lower case). */
+const SESSION = "x-codedeck-session";
 
 /** a/ and b/ prefixes, quotes and the tab suffix are not part of the path. */
 function cleanPath(raw: string): { path: string; info?: string } {
@@ -170,9 +183,9 @@ export function parsePatch(text: string): Patch | null {
       f.newInfo = b.info;
       i++; // the +++ line
     } else if (file && (m = l.match(/^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@ ?(.*)$/))) {
-      const hunk: Hunk = { header: l, section: m[5], oldStart: +m[1], newStart: +m[3], lines: [], src: i + 1 };
       let remOld = m[2] === undefined ? 1 : +m[2];
       let remNew = m[4] === undefined ? 1 : +m[4];
+      const hunk: Hunk = { header: l, section: m[5], oldStart: +m[1], newStart: +m[3], oldCount: remOld, newCount: remNew, lines: [], src: i + 1 };
       let oldNo = hunk.oldStart;
       let newNo = hunk.newStart;
       let j = i + 1;
@@ -216,6 +229,9 @@ export function parsePatch(text: string): Patch | null {
         file.oldPath = m[2];
       } else if ((m = l.match(/^(rename|copy) to (.*)$/))) {
         file.newPath = m[2];
+      } else if ((m = l.match(/^index ([0-9a-f]{4,64})\.\.([0-9a-f]{4,64})/))) {
+        file.oldBlob = m[1];
+        file.newBlob = m[2];
       } else if ((m = l.match(/^similarity index (\d+)%/))) {
         file.similarity = +m[1];
       } else if (/^(Binary files .* differ|GIT binary patch)/.test(l)) {
@@ -266,6 +282,7 @@ function parseHeader(lines: string[], generator: Meta["generator"]): Meta {
     if (key === "subject") set("subject");
     else if (key === "from") set("author");
     else if (key === "date") set("date");
+    else if (key === SESSION) meta.session = value.trim() || undefined;
     else if (!cont) meta.other.push(l);
   }
   if (meta.subject) {
@@ -284,6 +301,10 @@ function parseHeader(lines: string[], generator: Meta["generator"]): Meta {
   if (paragraphs.length > 0 && last.length > 0 && last.every((l) => /^[A-Za-z][A-Za-z0-9-]*: \S/.test(l) && TRAILER_KEY.test(l.split(":")[0]))) {
     meta.trailers = last.map((l) => [l.slice(0, l.indexOf(":")), l.slice(l.indexOf(":") + 2)] as [string, string]);
     paragraphs.pop();
+    // The session is for Dirq, not for the reader
+    const session = meta.trailers.find(([k]) => k.toLowerCase() === SESSION);
+    if (session) meta.session ??= session[1].trim();
+    meta.trailers = meta.trailers.filter(([k]) => k.toLowerCase() !== SESSION);
   }
   meta.message = paragraphs.join("\n\n");
   if (!meta.subject && meta.message) {

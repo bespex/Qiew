@@ -78,8 +78,11 @@ Requirements: Ubuntu 24.04+, Linux Mint 22+ or Debian 13+ (x86_64).
 - **Formats** – `git diff`, `git format-patch`, IntelliJ IDEA "Create Patch", Subversion and plain `diff -u`:
   renames, mode changes, binary files, "no newline at end of file". What is not a unified diff is shown as written.
 - **Search, copy, export** – Ctrl+F; copy the patch text; export the view as one HTML file.
+- **Comments for the assistant** – only when the program that started Dirq allows it (`--annotate`, see below).
+- **More lines around a change** – only with `--repo`: between the hunks "20 more", "All" and "Whole file", the
+  lines read from the repository, with the right numbers on both sides and in colour.
 
-Like every Qiew viewer: read-only, one file at a time, live reload, copy, About box, four colour schemes, and the
+Like every Qiew viewer: read-only (comments are messages to another program, not changes to the file), one file at a time, live reload, copy, About box, four colour schemes, and the
 question whether it should become the default viewer.
 
 ## Usage
@@ -87,6 +90,40 @@ question whether it should become the default viewer.
 - **Open a file:** drag it onto the window, `dirq change.patch`, `git diff | dirq -` or double-click. Dirq
   handles `.diff` and `.patch`. `--line <n>` shows that line of the patch file.
 - **Keys:** F7 / Shift+F7 next / previous change, Ctrl+F search.
+- **Options:** `--annotate` lets the user comment on lines (below); `--repo <path>` lets Dirq read that Git
+  repository, read-only, for more lines around a change and for files its `.gitattributes` mark as generated
+  (`linguist-generated`). `--id <text>` names the document. Put options after the file or `-`.
+
+## Comments for the assistant (`--annotate`)
+
+A program that starts Dirq – CodeDeck – can let you comment on single lines of the patch. Each comment goes to
+that program, which hands it to the AI with your next prompt.
+
+1. **Without `--annotate` nothing changes.** No "+" at the lines, no cards, no button, no key. That is the normal case.
+2. **With it you can add, change and remove comments on single lines** – context, added and removed lines. Point at
+   a line and click the "+" in the margin, or press Ctrl+Alt+M (the line under the pointer, else the change the
+   last jump went to). Ctrl+Enter sends, Esc cancels. Pointing at a card shows a pen (change) and a bin (remove).
+   That is all the option turns on: Dirq still writes nothing anywhere.
+3. **Dirq keeps no comments.** They live in the window while the document is shown; the receiving program keeps
+   them. A new version of the same document (same `--id`, or a file that changed) keeps them at their line,
+   found again by its text; a line that is gone leaves its card dimmed with "line changed". Another document
+   starts without them.
+4. **It is a permission, not a setting.** Only on the command line of a call, never in a file or a menu.
+5. **It holds for that call's document.** A document handed over later without `--annotate` is read-only again.
+
+| `--annotate` | `CODEDECK_SOCKET` | What happens |
+|---|---|---|
+| no | no | view only |
+| no | yes | view only: the variable allows nothing by itself |
+| yes | yes | comments; each one is sent to the socket |
+| yes | no | comments stay in the window ("kept here"); "Copy as list" in the comment list gives Markdown |
+
+A comment that could not be sent says "not sent" and offers "Send again"; the comment list offers to send all
+of them again. The button with the bubble in the toolbar shows how many there are and opens the list.
+
+```sh
+git diff | dirq - --annotate --repo .    # comment, and nothing receives them: copy them as a list
+```
 
 
 ## Try it

@@ -23,6 +23,9 @@ import { CHIPS, type Chip, type FileFilter, type Sort, visibleFiles } from "./fi
 import { docKey } from "./docid";
 import { isGenerated } from "./generated";
 import { type Anchor, anchorOf, findAnchor, freshKey, updateFresh } from "./live";
+import { type Comment, type Target, addMessage, fileOf, markdownList, newId, relocate, removeMessage, targetOf } from "./comments";
+import { type Gap, type Opened, blobLines, contextLines, gapsOf, hiddenIn, oldTotalOf, openMore, shownIn } from "./context";
+import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 
 setApp("dirq");
 initToolbar();
@@ -30,6 +33,12 @@ initToolbar();
 interface Doc {
   path: string;
   content: string;
+  /** --annotate for this document: lines may be commented. */
+  annotate?: boolean;
+  /** Comments have somewhere to go (CODEDECK_SOCKET of the same call). */
+  connected?: boolean;
+  /** --repo for this document: more lines around a change can come from the repository. */
+  repo?: boolean;
 }
 
 const DROP_HERE = "Drop Diff or Patch File Here";
@@ -79,6 +88,25 @@ let fresh = new Set<string>();
 /** What became new in the reload being drawn: it flashes, once. */
 let flashing = new Set<string>();
 let firstShown = true;
+/** Comments on lines of this document (only with --annotate); they live as long as it is shown. */
+let comments: Comment[] = [];
+/** The comment being written (or changed: `editing` is its id); kept across reloads. */
+let draft: { target: Target; text: string; editing?: string } | null = null;
+/** The comment list is shown in the side panel although the patch has only one file. */
+let commentsPanel = false;
+/** A line of a file's table as its cells name it (`data-k`): one of the patch, or one from the repository. */
+interface LineRef {
+  line: DiffLine;
+  hunk: Hunk | null;
+}
+const refs = new Map<number, LineRef[]>();
+/** --repo: which blobs the repository has, their lines, their colours, how far each gap is open. */
+const blobOk = new Map<string, boolean>();
+const blobs = new Map<string, string[]>();
+const blobColours = new Map<string, string[] | null>();
+const opened = new Map<string, Map<number, Opened>>();
+/** Files the repository marks as generated (linguist-generated), and those already folded for it. */
+const repoGenerated = new Set<string>();
 /** Where the view was before each jump (file, change, outline entry), for Alt+← and Alt+→. */
 const jumps = new JumpHistory<number>((a, b) => Math.abs(a - b) < 8);
 
@@ -88,8 +116,12 @@ function jumpTo(top: number) {
   window.scrollTo({ top });
 }
 
+/** The row the last jump went to: Ctrl+Alt+M comments on it when the pointer is on no line. */
+let lastJumped: Element | null = null;
+
 /** A short highlight on what a jump went to, for when it cannot reach the top of the window. */
 function flash(el: Element) {
+  lastJumped = el;
   el.classList.add("launch-line");
   setTimeout(() => el.classList.remove("launch-line"), 900);
 }
@@ -182,13 +214,100 @@ function rowsOf(hunk: Hunk): Row[] {
   return rows;
 }
 
+/** The part of the repository a file's extra lines come from: a blob the repository has. */
+function baseOf(f: FileDiff): { name: string; side: "old" | "new" } | null {
+  if (!current?.repo) return null;
+  if (f.oldBlob && blobOk.get(f.oldBlob)) return { name: f.oldBlob, side: "old" };
+  if (f.newBlob && blobOk.get(f.newBlob)) return { name: f.newBlob, side: "new" };
+  return null;
+}
+
+/** The gaps of a file; the last one ends where the file does once its blob is read. */
+function gapsNow(f: FileDiff): Gap[] {
+  const base = baseOf(f);
+  const lines = base && blobs.get(base.name);
+  return gapsOf(f, lines ? oldTotalOf(f, lines, base.side) : undefined);
+}
+
+const openOf = (f: FileDiff, gap: Gap): Opened => opened.get(key(f))?.get(gap.from) ?? { top: 0, bottom: 0 };
+
+/** A blob's lines coloured, once, where the language is known and the file not too long. */
+function colouredBlob(name: string, path: string): string[] | null {
+  if (!blobColours.has(name)) {
+    const lines = blobs.get(name);
+    const lang = languageOf(path);
+    blobColours.set(name, lines && lang && lines.length < 20000 ? highlightLines(lines, lang) : null);
+  }
+  return blobColours.get(name) ?? null;
+}
+
+const GAP_SVG = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M6.5 10.5 12 5l5.5 5.5" /></svg>`;
+
+/**
+ * An unchanged stretch with the repository behind it: the lines opened from either side, and
+ * between them a row that says how many are closed, with buttons to open more.
+ */
+function gapHtml(f: FileDiff, gap: Gap, cols: number, k: (l: DiffLine, h: Hunk | null) => number): string {
+  const base = baseOf(f)!;
+  const lines = blobs.get(base.name);
+  const open = openOf(f, gap);
+  const coloured = lines ? colouredBlob(base.name, key(f)) : null;
+  const row = (l: DiffLine) => {
+    const at = (base.side === "old" ? l.oldNo! : l.newNo!) - 1;
+    const html = coloured?.[at] ?? (esc(l.text) || "​");
+    const i = k(l, null);
+    return unified
+      ? `<tr class="extra"><td class="no">${l.oldNo}</td><td class="no">${l.newNo}</td><td class="code sign" data-sign=" " data-k="${i}">${html}</td></tr>`
+      : `<tr class="extra"><td class="no">${l.oldNo}</td><td class="code" data-k="${i}">${html}</td><td class="no">${l.newNo}</td><td class="code" data-k="${i}">${html}</td></tr>`;
+  };
+  let html = "";
+  const shown = lines ? shownIn(gap, open) : { top: null, bottom: null };
+  if (shown.top && lines) html += contextLines(lines, base.side, gap, ...shown.top).map(row).join("");
+  const hidden = lines ? hiddenIn(gap, open) : gap.to === null ? null : gap.to - gap.from + 1;
+  if (hidden !== 0) {
+    const first = gap.index === 0;
+    const last = gap.to === null || gap.index === f.hunks.length;
+    // A short stretch opens at once; a long one 20 lines at a time from either side, or all of it
+    const short = hidden !== null && hidden <= 20;
+    const down = GAP_SVG.replace("M12 5v14M6.5 10.5 12 5l5.5 5.5", "M12 5v14M6.5 13.5 12 19l5.5-5.5");
+    const buttons = [
+      short ? `<button type="button" data-more="all">Show ${hidden}</button>` : "",
+      !short && !first ? `<button type="button" data-more="top" title="20 more lines below the change above">${down}20</button>` : "",
+      !short && !last ? `<button type="button" data-more="bottom" title="20 more lines above the change below">${GAP_SVG}20</button>` : "",
+      !short ? `<button type="button" data-more="all">All</button>` : "",
+      `<button type="button" data-more="file" title="Every line of the file">Whole file</button>`,
+    ].join("");
+    const says = hidden === null ? "More lines below" : `⋯ ${plural(hidden, "unchanged line")}`;
+    html += `<tr class="gap-row" data-gap="${gap.from}"><td colspan="${cols}"><span class="gap">${says}</span>${buttons}</td></tr>`;
+  }
+  if (shown.bottom && lines) html += contextLines(lines, base.side, gap, ...shown.bottom).map(row).join("");
+  return html;
+}
+
 function hunkRow(h: Hunk, index: number, gap: number, cols: number): string {
   const note = gap > 0 ? `<span class="gap">⋯ ${plural(gap, "unchanged line")}</span>` : "";
   return `<tr class="hunk" data-src="${h.src}" data-h="${index}"><td colspan="${cols}">${note}${esc(h.header.replace(/ @@.*$/, " @@"))}${h.section ? ` <span class="sec">${esc(h.section)}</span>` : ""}</td></tr>`;
 }
 
-function tableOf(f: FileDiff): string {
+function tableOf(f: FileDiff, fi: number): string {
   const cols = unified ? 3 : 4;
+  // Which line each code cell shows (data-k), for the comments
+  const list: LineRef[] = [];
+  const seenLines = new Map<DiffLine, number>();
+  const k = (l: DiffLine, h: Hunk | null) => {
+    let i = seenLines.get(l);
+    if (i === undefined) {
+      i = list.length;
+      list.push({ line: l, hunk: h });
+      seenLines.set(l, i);
+    }
+    return i;
+  };
+  refs.set(fi, list);
+  // With the repository, the stretches between the hunks can be opened
+  const base = baseOf(f);
+  const gaps = base ? gapsNow(f) : [];
+  const gapAt = (i: number) => gaps.find((g) => g.index === i);
   let html = unified
     ? `<table class="diff unified"><colgroup><col style="width:52px"><col style="width:52px"><col></colgroup><tbody>`
     : `<table class="diff split"><colgroup><col style="width:52px"><col><col style="width:52px"><col></colgroup><tbody>`;
@@ -197,7 +316,8 @@ function tableOf(f: FileDiff): string {
   // Unified: a change shows all removed lines, then all added ones.
   let adds = "";
   for (const [index, h] of f.hunks.entries()) {
-    html += adds + hunkRow(h, index, h.oldStart - prevEnd, cols);
+    const gap = gapAt(index);
+    html += adds + (base ? (gap ? gapHtml(f, gap, cols, k) : "") + hunkRow(h, index, 0, cols) : hunkRow(h, index, h.oldStart - prevEnd, cols));
     adds = "";
     const last = [...h.lines].reverse().find((l) => l.oldNo !== undefined);
     prevEnd = (last?.oldNo ?? h.oldStart - 1) + 1;
@@ -210,13 +330,13 @@ function tableOf(f: FileDiff): string {
         if (!r.changed) {
           html += adds;
           adds = "";
-          html += `<tr data-src="${r.new!.src}"><td class="no">${r.old!.oldNo}</td><td class="no">${r.new!.newNo}</td><td class="code sign" data-sign=" ">${code(r.new!, undefined, colours)}${eol(r.new!)}</td></tr>`;
+          html += `<tr data-src="${r.new!.src}"><td class="no">${r.old!.oldNo}</td><td class="no">${r.new!.newNo}</td><td class="code sign" data-sign=" " data-k="${k(r.new!, h)}">${code(r.new!, undefined, colours)}${eol(r.new!)}</td></tr>`;
           continue;
         }
         if (r.old)
-          html += `<tr data-src="${r.old.src}"${cls}><td class="no del">${r.old.oldNo}</td><td class="no del"></td><td class="code sign del" data-sign="−">${code(r.old, r.oldSpans, colours)}${eol(r.old)}</td></tr>`;
+          html += `<tr data-src="${r.old.src}"${cls}><td class="no del">${r.old.oldNo}</td><td class="no del"></td><td class="code sign del" data-sign="−" data-k="${k(r.old, h)}">${code(r.old, r.oldSpans, colours)}${eol(r.old)}</td></tr>`;
         if (r.new)
-          adds += `<tr data-src="${r.new.src}"${r.old ? "" : cls}><td class="no add"></td><td class="no add">${r.new.newNo}</td><td class="code sign add" data-sign="+">${code(r.new, r.newSpans, colours)}${eol(r.new)}</td></tr>`;
+          adds += `<tr data-src="${r.new.src}"${r.old ? "" : cls}><td class="no add"></td><td class="no add">${r.new.newNo}</td><td class="code sign add" data-sign="+" data-k="${k(r.new, h)}">${code(r.new, r.newSpans, colours)}${eol(r.new)}</td></tr>`;
         // Unified order is all removed, then all added; the pairing above interleaves them, which
         // reads the same for one-line changes and keeps words marked for longer blocks.
       } else {
@@ -226,13 +346,14 @@ function tableOf(f: FileDiff): string {
         html +=
           `<tr data-src="${src}"${cls}>` +
           `<td class="no${r.changed && o ? " del" : ""}">${o?.oldNo ?? ""}</td>` +
-          `<td class="code${r.changed ? (o ? " del" : " void") : ""}">${o ? code(o, r.oldSpans, colours) + eol(o) : ""}</td>` +
+          `<td class="code${r.changed ? (o ? " del" : " void") : ""}"${o ? ` data-k="${k(o, h)}"` : ""}>${o ? code(o, r.oldSpans, colours) + eol(o) : ""}</td>` +
           `<td class="no${r.changed && n ? " add" : ""}">${n?.newNo ?? ""}</td>` +
-          `<td class="code${r.changed ? (n ? " add" : " void") : ""}">${n ? code(n, r.newSpans, colours) + eol(n) : ""}</td></tr>`;
+          `<td class="code${r.changed ? (n ? " add" : " void") : ""}"${n ? ` data-k="${k(n, h)}"` : ""}>${n ? code(n, r.newSpans, colours) + eol(n) : ""}</td></tr>`;
       }
     }
   }
-  return html + adds + "</tbody></table>";
+  const trailing = base ? gapAt(f.hunks.length) : undefined;
+  return html + adds + (trailing ? gapHtml(f, trailing, cols, k) : "") + "</tbody></table>";
 }
 
 const STATUS = { modified: "M", added: "A", deleted: "D", renamed: "R", copied: "C" } as const;
@@ -244,19 +365,19 @@ function pathHtml(path: string, strip = ""): string {
   return at < 0 ? `<b>${esc(shownPath)}</b>` : `<i>${esc(shownPath.slice(0, at + 1))}</i><b>${esc(shownPath.slice(at + 1))}</b>`;
 }
 
-function fileBody(f: FileDiff): string {
+function fileBody(f: FileDiff, fi: number): string {
   if (f.binary) return `<div class="note">Binary file – there is no text to compare.</div>`;
   if (f.hunks.length === 0) {
     return `<div class="note">${f.status === "renamed" ? "Renamed without changes." : f.status === "added" ? "Empty file added." : f.status === "deleted" ? "Empty file removed." : "No changes to the content."}</div>`;
   }
-  return tableOf(f);
+  return tableOf(f, fi);
 }
 
 const lineCount = (f: FileDiff) => f.hunks.reduce((n, h) => n + h.lines.length, 0);
 
 /** A folded generated or very long file says why, and opens on a click. */
 function foldedBody(f: FileDiff): string {
-  const kind = isGenerated(key(f)) ? "generated" : lineCount(f) > BIG ? "long" : "";
+  const kind = isGenerated(key(f)) || repoGenerated.has(key(f)) ? "generated" : lineCount(f) > BIG ? "long" : "";
   return kind && !f.binary && f.hunks.length ? `<div class="note hint">${kind} · ${plural(lineCount(f), "line")} · <u>Show</u></div>` : "";
 }
 
@@ -277,8 +398,8 @@ function fileHtml(f: FileDiff, index: number, forceOpen = false): string {
     `<section class="file${isCollapsed ? " collapsed" : ""}" data-i="${index}" data-src="${f.src}">` +
     `<header class="file-head"><span class="tw">▼</span><span class="st st-${f.status}">${STATUS[f.status]}</span>` +
     `<span class="path">${where}</span><span class="info">${esc(infos.join(" · "))}</span><span class="grow"></span>` +
-    `<span class="cnt"><span class="a">+${f.added}</span> <span class="d">−${f.deleted}</span></span></header>` +
-    `<div class="file-body">${isCollapsed ? foldedBody(f) : fileBody(f)}</div></section>`
+    `<span class="cmc-h"></span><span class="cnt"><span class="a">+${f.added}</span> <span class="d">−${f.deleted}</span></span></header>` +
+    `<div class="file-body">${isCollapsed ? foldedBody(f) : fileBody(f, index)}</div></section>`
   );
 }
 
@@ -344,13 +465,14 @@ function listHtml(p: Patch): string {
     .map((i) => {
       const f = p.files[i];
       const isFresh = freshIn(f) > 0;
+      const said = commentsIn(f);
       const sections = outline(f)
         .map((o) => `<a class="sec" data-i="${i}" data-src="${o.hunk.src}" title="${esc(o.section)}"><span class="nm"><bdi>${esc(o.section)}</bdi></span></a>`)
         .join("");
       return (
         `<a class="f" data-i="${i}"><span class="st st-${f.status}">${STATUS[f.status]}</span>` +
         `<span class="nm"><bdi>${pathHtml(key(f), strip)}</bdi></span>` +
-        `<span class="cnt">${isFresh ? `<span class="dot" title="New since the last reload – click to clear"></span>` : ""}<span class="a">+${f.added}</span> <span class="d">−${f.deleted}</span></span></a>${sections}`
+        `<span class="cnt">${said ? `<span class="cmc" title="${plural(said, "comment")}">${BUBBLE_SVG}${said}</span>` : ""}${isFresh ? `<span class="dot" title="New since the last reload – click to clear"></span>` : ""}<span class="a">+${f.added}</span> <span class="d">−${f.deleted}</span></span></a>${sections}`
       );
     })
     .join("");
@@ -479,6 +601,28 @@ function render() {
     filter.query = "";
     filter.chips.clear();
     queryEl.value = "";
+    // Comments belong to the document: another one starts without (the receiver keeps them)
+    comments = [];
+    draft = null;
+    commentsPanel = false;
+    opened.clear();
+    blobOk.clear();
+    repoGenerated.clear();
+  }
+  if (!current.annotate) {
+    // Handed over without --annotate: no "+", no cards, no button
+    comments = [];
+    draft = null;
+  } else if (reload) {
+    // A new version of the same document: each comment finds its line again by its text
+    for (const c of comments) {
+      if (c.target.extra) continue;
+      const now = relocate(c.target, patch.files);
+      c.lost = !now;
+      if (now) c.target = now;
+    }
+    const now = draft && !draft.target.extra ? relocate(draft.target, patch.files) : null;
+    if (draft && now) draft.target = now;
   }
   // A new version of the same document: what differs from the last one is marked, the rest of the
   // state (folded files, filter, place) stays.
@@ -488,15 +632,18 @@ function render() {
   content.innerHTML = metaHtml(patch, fileName(current.path)) + patch.files.map((f, i) => fileHtml(f, i)).join("");
   content.querySelectorAll<HTMLElement>(".file").forEach(applyFresh);
   flashing = new Set();
+  hidePlus();
+  content.querySelectorAll<HTMLElement>(".file").forEach(placeComments);
   showList();
   empty.hidden = true;
   layout.hidden = false;
-  layout.classList.toggle("no-side", !sideOpen || patch.files.length < 2);
+  layout.classList.toggle("no-side", !sideShown());
   $btn("side-btn").hidden = patch.files.length < 2;
   $btn("side-btn").setAttribute("aria-pressed", String(sideOpen));
   $btn("mode-btn").title = unified ? "Side by side view" : "Unified view";
   $btn("ws-btn").setAttribute("aria-pressed", String(ignoreWs));
   updateToolbar(current.content, `${plural(patch.files.length, "File")} · +${patch.added} −${patch.deleted}`);
+  showCommentTools();
   setExportContent(exportHtml);
   if (!reload) window.scrollTo(0, 0);
   else if (!anchor || !restore(anchor)) window.scrollTo(0, scroll);
@@ -515,6 +662,9 @@ function showRaw() {
   layout.hidden = false;
   layout.classList.add("no-side");
   $btn("side-btn").hidden = true;
+  comments = [];
+  draft = null;
+  showCommentTools();
   updateToolbar(current!.content, plural(current!.content.split("\n").length, "Line"));
   setExportContent(exportHtml);
 }
@@ -535,6 +685,7 @@ async function open(path: string, fromCaller = true) {
     current = await invoke<Doc>("open_file", { path });
     docId = fromCaller ? await launchDocId() : null;
     render();
+    void probeRepo();
     if (firstShown) {
       firstShown = false;
       // Room for two columns and the file list (--geometry wins; the backend knows).
@@ -557,12 +708,13 @@ function toggleFile(section: HTMLElement) {
   section.classList.toggle("collapsed", !open);
   if (open) {
     collapsed.delete(key(f));
-    body.innerHTML = fileBody(f);
+    body.innerHTML = fileBody(f, Number(section.dataset.i));
     applyFresh(section);
   } else {
     collapsed.add(key(f));
     body.innerHTML = foldedBody(f);
   }
+  placeComments(section);
   drawRuler();
 }
 
@@ -574,6 +726,9 @@ content.addEventListener("click", (e) => {
     target.textContent = open ? "Show more" : "Show less";
     return;
   }
+  if (commentClick(target)) return;
+  const more = target.closest<HTMLElement>("[data-more]");
+  if (more) return void openGap(more);
   const head = target.closest<HTMLElement>(".file-head");
   if (head && !getSelection()?.toString()) toggleFile(head.parentElement!);
   else if (target.closest(".hint")) toggleFile(target.closest<HTMLElement>(".file")!);
@@ -657,6 +812,7 @@ onKeys({
   toggleNav: () => {
     if (!$btn("side-btn").hidden) $btn("side-btn").click();
   },
+  comment: () => commentHere(),
   help: toggleHelp,
 });
 setKeyHelp([
@@ -667,6 +823,8 @@ setKeyHelp([
   ["back", "Back to where the last jump started"],
   ["forward", "Forward again"],
   ["toggleNav", "Show or hide the file list"],
+  ["comment", "Comment on the line under the pointer (with --annotate)"],
+  ["submit", "Send the comment being written"],
   ["search", "Search"],
 ]);
 $btn("next-btn").title = withKey("Next change", "nextChange");
@@ -708,7 +866,9 @@ function drawRuler() {
     content.querySelectorAll<HTMLElement>(".file.collapsed").forEach((section) => {
       const f = patch!.files[Number(section.dataset.i)];
       if (freshIn(f) > 0) html += mark(section.querySelector<HTMLElement>(".file-head")!, "new");
+      if (commentsIn(f) > 0) html += mark(section.querySelector<HTMLElement>(".file-head")!, "cm");
     });
+    content.querySelectorAll<HTMLElement>(".cm-card").forEach((card) => (html += mark(card, "cm")));
     ruler.innerHTML = html;
   });
 }
@@ -783,6 +943,441 @@ function exportHtml(): string {
   );
 }
 
+// ---- comments (only with --annotate) ----------------------------------------------------
+//
+// Docs: Qiew docs/ANNOTATE.md. Without --annotate none of this shows: no "+", no cards, no button,
+// no key. A comment is a message to the program that started Dirq (CODEDECK_SOCKET); Dirq writes
+// nothing and keeps comments only while the document is shown.
+
+const BUBBLE_SVG = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5h14a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1h-8l-4 3.5V16H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1Z" /></svg>`;
+const PEN_SVG = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16v4Z" /><path d="m13.5 6.5 4 4" /></svg>`;
+const BIN_SVG = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M10 7V5h4v2M7 7l1 12h8l1-12" /></svg>`;
+
+/** Only with --annotate for the document shown. */
+const annotating = () => !!current?.annotate && !!patch;
+
+const commentsIn = (f: FileDiff) => (annotating() ? comments.filter((c) => c.target.file === fileOf(f)).length : 0);
+
+/** The side panel shows with two files or more (as chosen), or for the comments of a single file. */
+function sideShown(): boolean {
+  if (!patch) return false;
+  return patch.files.length >= 2 ? sideOpen : annotating() && commentsPanel;
+}
+
+const cmBtn = $btn("cm-btn");
+const cmPart = document.getElementById("cm-tools")!;
+cmBtn.title = "Comments";
+
+/** The toolbar button with the bubble and the number; only with --annotate. */
+function showCommentTools() {
+  cmPart.hidden = !annotating();
+  const unsent = comments.filter((c) => c.state === "unsent").length;
+  document.getElementById("cm-count")!.textContent = comments.length ? String(comments.length) : "";
+  cmBtn.classList.toggle("warn", unsent > 0);
+  cmBtn.title = comments.length
+    ? `${plural(comments.length, "comment")}${unsent ? ` · ${unsent} not sent` : ""} – show the list`
+    : current?.connected
+      ? "Comments: point at a line and click + (Ctrl+Alt+M)"
+      : "Comments stay in this window: nothing receives them (copy them as a list)";
+  showCommentList();
+}
+
+cmBtn.addEventListener("click", () => {
+  if (!patch) return;
+  if (patch.files.length >= 2) {
+    if (!sideOpen) $btn("side-btn").click();
+  } else {
+    commentsPanel = !commentsPanel;
+    layout.classList.toggle("no-side", !sideShown());
+  }
+  if (sideShown()) cmEl.scrollIntoView({ block: "nearest" });
+});
+
+/** The comment list at the bottom of the side panel: where each one is, copy, send again. */
+const cmEl = document.createElement("div");
+cmEl.className = "fl-comments";
+cmEl.hidden = true;
+filesEl.append(cmEl);
+
+function showCommentList() {
+  cmEl.hidden = !annotating();
+  if (cmEl.hidden) return;
+  const unsent = comments.filter((c) => c.state === "unsent");
+  const entries = comments
+    .map(
+      (c) =>
+        `<a class="cm-entry${c.lost ? " lost" : ""}${c.state === "unsent" ? " unsent" : ""}" data-cm-go="${c.id}">` +
+        `<span class="where">${esc(c.target.file.split("/").pop() ?? c.target.file)}:${c.target.line}</span>` +
+        `<span class="txt">${esc(c.text.split("\n")[0])}</span></a>`,
+    )
+    .join("");
+  cmEl.innerHTML =
+    `<div class="cm-title">Comments${comments.length ? ` · ${comments.length}` : ""}</div>` +
+    (current?.connected ? "" : `<div class="cm-hint">Nothing receives them: they stay in this window. Copy them as a list.</div>`) +
+    (entries || `<div class="cm-hint">Point at a line and click <b>+</b>, or press Ctrl+Alt+M.</div>`) +
+    `<div class="cm-actions">` +
+    (comments.length ? `<button type="button" data-cm-do="copy">Copy as list</button>` : "") +
+    (current?.connected && unsent.length ? `<button type="button" data-cm-do="resend-all" class="primary">Send ${unsent.length} again</button>` : "") +
+    `</div>`;
+}
+
+cmEl.addEventListener("click", async (e) => {
+  const t = e.target as HTMLElement;
+  const go = t.closest<HTMLElement>("[data-cm-go]")?.dataset.cmGo;
+  if (go) return goToComment(go);
+  const what = t.closest<HTMLElement>("[data-cm-do]")?.dataset.cmDo;
+  if (what === "copy") {
+    await writeText(markdownList(comments)).catch(() => {});
+    t.textContent = "Copied";
+    setTimeout(showCommentList, 1200);
+  } else if (what === "resend-all") {
+    for (const c of comments.filter((x) => x.state === "unsent")) void sendComment(c);
+  }
+});
+
+function goToComment(id: string) {
+  const c = comments.find((x) => x.id === id);
+  if (!c || !patch) return;
+  const at = patch.files.findIndex((f) => fileOf(f) === c.target.file);
+  const section = content.querySelector<HTMLElement>(`.file[data-i="${at}"]`);
+  if (!section) return;
+  if (section.classList.contains("collapsed")) toggleFile(section);
+  const card = section.querySelector<HTMLElement>(`.cm-card[data-id="${id}"]`);
+  if (!card) return;
+  jumpTo(window.scrollY + card.getBoundingClientRect().top - HEAD - (window.innerHeight - HEAD) / 4);
+  card.classList.add("launch-line");
+  setTimeout(() => card.classList.remove("launch-line"), 900);
+}
+
+/** Which side and number a target is found by among the rows. */
+const rowKey = (t: Target) => `${t.deleted ? "o" : "n"}:${t.at}`;
+
+function lineRefOf(cell: Element): { f: FileDiff; ref: LineRef } | null {
+  const section = cell.closest<HTMLElement>(".file");
+  const k = (cell as HTMLElement).dataset.k;
+  if (!patch || !section || k === undefined) return null;
+  const fi = Number(section.dataset.i);
+  const ref = refs.get(fi)?.[Number(k)];
+  return ref ? { f: patch.files[fi], ref } : null;
+}
+
+const targetOfCell = (cell: Element): Target | null => {
+  const r = lineRefOf(cell);
+  return r && targetOf(r.f, r.ref.line, r.ref.hunk);
+};
+
+function cardHtml(c: Comment, where: boolean): string {
+  const state =
+    c.state === "sending"
+      ? `<span class="cm-state">sending…</span>`
+      : c.state === "unsent"
+        ? current?.connected
+          ? `<span class="cm-state warn" title="${esc(c.error ?? "")}">not sent <button type="button" data-cm="resend">Send again</button></span>`
+          : `<span class="cm-state">kept here</span>`
+        : "";
+  const lost = c.lost ? `<span class="cm-state">line changed</span>` : "";
+  const error = c.error && c.state === "sent" ? `<div class="cm-error">${esc(c.error)}</div>` : "";
+  return (
+    `<div class="cm-card${c.lost ? " lost" : ""}${c.state === "unsent" ? " unsent" : ""}" data-id="${c.id}">` +
+    `<div class="cm-head"><span class="cm-bubble">${BUBBLE_SVG}</span>` +
+    (where ? `<span class="cm-where">Line ${c.target.line}${c.target.deleted ? " (removed line)" : ""}: <code>${esc(c.target.text.trim().slice(0, 80))}</code></span>` : "") +
+    `${lost}${state}<span class="cm-tools"><button type="button" data-cm="edit" title="Change">${PEN_SVG}</button>` +
+    `<button type="button" data-cm="remove" title="Remove">${BIN_SVG}</button></span></div>` +
+    `<div class="cm-text">${esc(c.text)}</div>${error}</div>`
+  );
+}
+
+function draftHtml(): string {
+  const sends = !!current?.connected;
+  return (
+    `<div class="cm-input"><textarea rows="3" placeholder="${sends ? "A comment for the assistant" : "A comment"} …" aria-label="Comment"></textarea>` +
+    `<div class="cm-actions"><span class="cm-keys">${sends ? "Sent to the program that started Dirq. " : "Nothing receives it: it stays here. "}Ctrl+Enter, Esc cancels</span>` +
+    `<button type="button" data-cm="cancel">Cancel</button><button type="button" data-cm="send" class="primary">${draft?.editing ? "Change" : sends ? "Send" : "Add"}</button></div></div>`
+  );
+}
+
+/** Puts the cards (and the card being written) under their lines; what has no line goes on top of the file. */
+function placeComments(section: HTMLElement) {
+  section.querySelectorAll(".cm-row, .cm-elsewhere").forEach((el) => el.remove());
+  const head = section.querySelector<HTMLElement>(".cmc-h");
+  if (!patch || !annotating()) {
+    if (head) head.innerHTML = "";
+    return;
+  }
+  const f = patch.files[Number(section.dataset.i)];
+  const mine = comments.filter((c) => c.target.file === fileOf(f));
+  if (head) head.innerHTML = mine.length ? `<span class="cmc" title="${plural(mine.length, "comment")}">${BUBBLE_SVG}${mine.length}</span>` : "";
+  const writing = draft && draft.target.file === fileOf(f) ? draft : null;
+  if (section.classList.contains("collapsed")) return;
+  const rows = new Map<string, HTMLElement>();
+  section.querySelectorAll<HTMLElement>("td.code[data-k]").forEach((cell) => {
+    const t = targetOfCell(cell);
+    if (t && !rows.has(rowKey(t))) rows.set(rowKey(t), cell.parentElement!);
+  });
+  const cols = unified ? 3 : 4;
+  const after = (tr: HTMLElement, html: string, cls: string) => {
+    let at: Element = tr;
+    while (at.nextElementSibling?.classList.contains("cm-row")) at = at.nextElementSibling;
+    at.insertAdjacentHTML("afterend", `<tr class="cm-row ${cls}"><td colspan="${cols}">${html}</td></tr>`);
+  };
+  const elsewhere: string[] = [];
+  for (const c of mine) {
+    if (writing?.editing === c.id) continue;
+    const tr = !c.lost && rows.get(rowKey(c.target));
+    if (tr) after(tr, cardHtml(c, false), "");
+    else elsewhere.push(cardHtml(c, true));
+  }
+  let input: HTMLTextAreaElement | null = null;
+  if (writing) {
+    const tr = rows.get(rowKey(writing.target));
+    if (tr) after(tr, draftHtml(), "cm-draft");
+    else elsewhere.unshift(draftHtml());
+  }
+  if (elsewhere.length) {
+    section.querySelector(".file-body")!.insertAdjacentHTML("afterbegin", `<div class="cm-elsewhere">${elsewhere.join("")}</div>`);
+  }
+  input = section.querySelector<HTMLTextAreaElement>(".cm-input textarea");
+  if (input && writing) {
+    input.value = writing.text;
+    input.addEventListener("input", () => draft && (draft.text = input!.value));
+    if (focusDraft) {
+      focusDraft = false;
+      input.focus();
+      input.setSelectionRange(input.value.length, input.value.length);
+      input.closest(".cm-input")!.scrollIntoView({ block: "nearest" });
+    }
+  }
+}
+/** The next placing of the card being written gives it the focus. */
+let focusDraft = false;
+
+/** After a comment changed: its file, the list, the button, the ruler. */
+function refreshComments(file?: string) {
+  if (!patch) return;
+  content.querySelectorAll<HTMLElement>(".file").forEach((section) => {
+    if (!file || fileOf(patch!.files[Number(section.dataset.i)]) === file) placeComments(section);
+  });
+  showList();
+  showCommentTools();
+  drawRuler();
+}
+
+function openDraft(target: Target, text = "", editing?: string) {
+  if (!annotating()) return;
+  const before = draft?.target.file;
+  draft = { target, text, editing };
+  focusDraft = true;
+  hidePlus();
+  if (before && before !== target.file) refreshComments(before);
+  refreshComments(target.file);
+}
+
+function closeDraft() {
+  const file = draft?.target.file;
+  draft = null;
+  refreshComments(file);
+}
+
+async function sendComment(c: Comment) {
+  if (!current?.connected) {
+    c.state = "unsent";
+    return refreshComments(c.target.file);
+  }
+  c.state = "sending";
+  refreshComments(c.target.file);
+  try {
+    await invoke("send_comment", { path: current.path, message: addMessage(c, patch?.meta.session, docId) });
+    c.state = "sent";
+    c.error = undefined;
+  } catch (err) {
+    c.state = "unsent";
+    c.error = String(err);
+  }
+  refreshComments(c.target.file);
+}
+
+async function removeComment(c: Comment) {
+  // What the receiver has, it is told to drop; what it never got, goes here only
+  if (c.state === "sent") {
+    if (!current?.connected) {
+      c.error = "Could not remove it there: not connected.";
+      return refreshComments(c.target.file);
+    }
+    try {
+      await invoke("send_comment", { path: current.path, message: removeMessage(c, patch?.meta.session, docId) });
+    } catch (err) {
+      c.error = `Could not remove it there: ${err}`;
+      return refreshComments(c.target.file);
+    }
+  }
+  comments = comments.filter((x) => x !== c);
+  refreshComments(c.target.file);
+}
+
+function submitDraft() {
+  if (!draft) return;
+  const text = draft.text.trim();
+  if (!text) return;
+  const editing = draft.editing ? comments.find((c) => c.id === draft!.editing) : undefined;
+  let c: Comment;
+  if (editing) {
+    // Sent again with the same id, it replaces the one the receiver has
+    editing.text = text;
+    c = editing;
+  } else {
+    c = { id: newId(), target: draft.target, text, state: "unsent" };
+    comments.push(c);
+  }
+  draft = null;
+  void sendComment(c);
+}
+
+/** Clicks on the cards and the card being written; true if it was one. */
+function commentClick(target: HTMLElement): boolean {
+  const button = target.closest<HTMLElement>("[data-cm]");
+  if (!button) return !!target.closest(".cm-row, .cm-elsewhere");
+  const what = button.dataset.cm;
+  if (what === "send") submitDraft();
+  else if (what === "cancel") closeDraft();
+  else {
+    const c = comments.find((x) => x.id === button.closest<HTMLElement>(".cm-card")?.dataset.id);
+    if (!c) return true;
+    if (what === "edit") openDraft(c.target, c.text, c.id);
+    else if (what === "remove") void removeComment(c);
+    else if (what === "resend") void sendComment(c);
+  }
+  return true;
+}
+
+content.addEventListener("keydown", (e) => {
+  if (!(e.target as HTMLElement).matches(".cm-input textarea")) return;
+  if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+    e.preventDefault();
+    e.stopPropagation();
+    submitDraft();
+  } else if (e.key === "Escape") {
+    e.preventDefault();
+    e.stopPropagation();
+    closeDraft();
+  }
+});
+
+/** The "+" in the margin: pointing at a line shows it; a click opens the card under the line. */
+const plus = document.createElement("button");
+plus.type = "button";
+plus.className = "cm-plus";
+plus.textContent = "+";
+plus.title = withKey("Comment on this line", "comment");
+plus.setAttribute("aria-label", "Comment on this line");
+plus.hidden = true;
+document.body.append(plus);
+let plusFor: Element | null = null;
+/** The line last pointed at, for Ctrl+Alt+M. */
+let pointed: Element | null = null;
+let plusTimer: number | undefined;
+
+function hidePlus() {
+  clearTimeout(plusTimer);
+  plus.hidden = true;
+  plusFor = null;
+}
+
+content.addEventListener("mousemove", (e) => {
+  if (!annotating()) return;
+  const t = e.target as HTMLElement;
+  if (t.closest(".cm-row, .cm-elsewhere")) return hidePlus();
+  const cell = t.closest<HTMLElement>("td.code[data-k]");
+  if (!cell) return;
+  pointed = cell;
+  clearTimeout(plusTimer);
+  if (plusFor === cell) return;
+  plusFor = cell;
+  const box = cell.getBoundingClientRect();
+  plus.style.top = `${box.top + window.scrollY}px`;
+  plus.style.left = `${box.left + window.scrollX - 20}px`;
+  plus.hidden = false;
+});
+content.addEventListener("mouseleave", (e) => {
+  if (e.relatedTarget !== plus) plusTimer = window.setTimeout(hidePlus, 300);
+});
+plus.addEventListener("mouseenter", () => clearTimeout(plusTimer));
+plus.addEventListener("click", () => {
+  const t = plusFor && targetOfCell(plusFor);
+  if (t) openDraft(t);
+});
+addEventListener("scroll", () => plusFor && hidePlus(), { passive: true });
+
+/** Ctrl+Alt+M: a comment on the line under the pointer, else on the change the last jump went to. */
+function commentHere() {
+  if (!annotating()) return;
+  let cell: Element | null = pointed?.isConnected ? pointed : null;
+  if (!cell && lastJumped?.isConnected) {
+    cell = lastJumped.querySelector("td.code.add[data-k]") ?? lastJumped.querySelector("td.code[data-k]");
+  }
+  cell ??= content.querySelector("td.code[data-k]");
+  const t = cell && targetOfCell(cell);
+  if (t) openDraft(t);
+}
+
+// ---- more lines from the repository (only with --repo) ------------------------------------
+
+/** Which blobs of the patch the repository has, and which files it marks as generated. */
+async function probeRepo() {
+  if (!current?.repo || !patch) return;
+  const path = current.path;
+  const names = [...new Set(patch.files.flatMap((f) => [f.oldBlob, f.newBlob]).filter((n): n is string => !!n && !/^0+$/.test(n) && !blobOk.has(n)))];
+  let changed = false;
+  if (names.length) {
+    const found = await invoke<boolean[]>("repo_blobs", { path, names }).catch(() => names.map(() => false));
+    names.forEach((n, i) => blobOk.set(n, found[i]));
+    changed = found.some(Boolean);
+  }
+  const paths = patch.files.map(key).filter((p) => !repoGenerated.has(p));
+  if (paths.length) {
+    const generated = await invoke<string[]>("repo_generated", { path, files: paths }).catch(() => []);
+    for (const p of generated) {
+      repoGenerated.add(p);
+      collapsed.add(p);
+      changed = true;
+    }
+  }
+  if (changed && current?.path === path) render();
+}
+
+/** A button of a gap: more lines, all of the gap, or the whole file. */
+async function openGap(button: HTMLElement) {
+  if (!patch) return;
+  const section = button.closest<HTMLElement>(".file")!;
+  const fi = Number(section.dataset.i);
+  const f = patch.files[fi];
+  const base = baseOf(f);
+  if (!base) return;
+  if (!blobs.has(base.name)) {
+    button.classList.add("busy");
+    try {
+      blobs.set(base.name, blobLines(await invoke<string>("repo_blob", { path: current!.path, name: base.name })));
+    } catch {
+      // Not to be had after all: the buttons go, no message (docs/ANNOTATE.md, 6)
+      blobOk.set(base.name, false);
+    }
+  }
+  const gaps = gapsNow(f);
+  const mine = opened.get(key(f)) ?? new Map<number, Opened>();
+  opened.set(key(f), mine);
+  const where = button.dataset.more as "top" | "bottom" | "all" | "file";
+  if (where === "file") {
+    for (const gap of gaps) mine.set(gap.from, openMore(gap, openOf(f, gap), "all"));
+  } else {
+    const gap = gaps.find((g) => g.from === Number(button.closest<HTMLElement>("[data-gap]")?.dataset.gap));
+    if (gap) mine.set(gap.from, openMore(gap, openOf(f, gap), where));
+  }
+  section.querySelector(".file-body")!.innerHTML = fileBody(f, fi);
+  applyFresh(section);
+  placeComments(section);
+  refreshSearch();
+  drawRuler();
+}
+
 // ---- files -------------------------------------------------------------------------------
 
 getCurrentWebview().onDragDropEvent((event) => {
@@ -801,8 +1396,10 @@ getCurrentWebview().onDragDropEvent((event) => {
 
 listen<Doc>("file-changed", ({ payload }) => {
   if (current && payload.path === current.path) {
-    current = payload;
+    // What the call allowed stays: a reload is the same document
+    current = { ...payload, annotate: current.annotate, connected: current.connected, repo: current.repo };
     render();
+    void probeRepo();
   }
 });
 listen<string>("open-file", ({ payload }) => open(payload));

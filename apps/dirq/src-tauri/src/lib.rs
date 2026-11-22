@@ -3,13 +3,20 @@
 //!
 //! Zero-Touch-Policy: this backend never writes to the files it shows; they
 //! are only read, the watcher merely observes. As an AppImage, an accepted
-//! update replaces the image file.
+//! update replaces the image file. Comments (only with `--annotate`) are
+//! messages to the program that started Dirq, never changes to the file; the
+//! repository named with `--repo` is only read (Qiew `docs/ANNOTATE.md`).
+
+mod codedeck;
+mod repo;
 
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use qiew_frame::text::{self, Document};
+use qiew_frame::launch::grants;
 use qiew_frame::{AppInfo, Viewer};
+use serde::Serialize;
 use tauri::{AppHandle, Manager, State, WebviewWindow};
 
 static INFO: AppInfo = AppInfo {
@@ -32,13 +39,43 @@ static INFO: AppInfo = AppInfo {
         "File list with status and +/- counts; F7 / Shift+F7 jump from change to change.",
         "Reads git diff, git format-patch, IntelliJ IDEA patches, Subversion and plain diff -u.",
         "Exports the view as one HTML file.",
+        "Comments on single lines only with --annotate: they go to the program that started Dirq (CODEDECK_SOCKET), never into the patch.",
+        "With --repo, more lines around a change from the repository (read-only).",
     ],
-    usage: &["git diff | dirq -"],
-    options: &[(
-        "--id <text>",
-        "name the document: the same text means a new version of the one shown before (kept: scroll position, folded files, filter), another text a different document. Put it after the file or `-`.",
-    )],
+    usage: &["git diff | dirq -", "git diff | dirq - --annotate --repo ."],
+    options: &[
+        (
+            "--id <text>",
+            "name the document: the same text means a new version of the one shown before (kept: scroll position, folded files, filter, comments), another text a different document. Put it after the file or `-`.",
+        ),
+        (
+            "--annotate",
+            "let the user comment on single lines (a \"+\" in the margin); each comment is sent to the program that started Dirq (CODEDECK_SOCKET), never written to the patch. Without it Dirq only views.",
+        ),
+        (
+            "--repo <path>",
+            "let Dirq look into this Git repository, read-only, for more lines around a change and for files marked as generated. Put it after the file or `-`.",
+        ),
+    ],
 };
+
+/// A file as the frontend gets it, with what the call that named it allowed.
+#[derive(Serialize)]
+struct Opened {
+    #[serde(flatten)]
+    doc: Document,
+    /// `--annotate`: lines may be commented.
+    annotate: bool,
+    /// Comments have somewhere to go (`CODEDECK_SOCKET`).
+    connected: bool,
+    /// `--repo`: there is a repository to read from.
+    repo: bool,
+}
+
+/// The repository the call that named `path` allows reading from, if it is a directory.
+fn repo_of(path: &str) -> Option<PathBuf> {
+    grants(Path::new(path)).repo.map(PathBuf::from).filter(|r| r.is_dir())
+}
 
 /// Reads a file and starts watching it for changes.
 #[tauri::command]
@@ -47,7 +84,7 @@ fn open_file(
     app: AppHandle,
     window: WebviewWindow,
     viewer: State<'_, Viewer>,
-) -> Result<Document, String> {
+) -> Result<Opened, String> {
     let path: PathBuf = fs::canonicalize(&path).map_err(|e| format!("{path}: {e}"))?;
     let doc = text::load(&path)?;
     viewer.watch(&app, &path, text::load);
@@ -55,7 +92,48 @@ fn open_file(
     if let Some(name) = path.file_name() {
         let _ = window.set_title(&format!("{} – Dirq", name.to_string_lossy()));
     }
-    Ok(doc)
+    let given = grants(&path);
+    Ok(Opened {
+        doc,
+        // Only with --annotate: without it there is no "+" and nothing is sent
+        annotate: given.annotate,
+        connected: given.annotate && given.codedeck_socket.is_some(),
+        repo: given.repo.is_some_and(|r| Path::new(&r).is_dir()),
+    })
+}
+
+/// Sends a comment on a line of `path` to the program that started Dirq. Only with `--annotate`
+/// for that file, and only to the socket that same call named.
+#[tauri::command]
+async fn send_comment(path: String, message: codedeck::Outgoing) -> Result<(), String> {
+    let given = grants(Path::new(&path));
+    if !given.annotate {
+        return Err("this document may not be commented (no --annotate)".into());
+    }
+    let socket = given.codedeck_socket.ok_or("not connected: no program to send to (CODEDECK_SOCKET)")?;
+    codedeck::send(Path::new(&socket), &codedeck::message_line(&message)?)
+}
+
+/// Which of the blobs the patch names the repository has (`--repo` only; else none).
+#[tauri::command]
+async fn repo_blobs(path: String, names: Vec<String>) -> Vec<bool> {
+    match repo_of(&path) {
+        Some(repo) => repo::blobs(&repo, &names),
+        None => vec![false; names.len()],
+    }
+}
+
+/// The text of a blob from the repository (`--repo` only).
+#[tauri::command]
+async fn repo_blob(path: String, name: String) -> Result<String, String> {
+    let repo = repo_of(&path).ok_or("no repository (--repo)")?;
+    repo::blob(&repo, &name)
+}
+
+/// The files of the patch the repository marks as generated (`--repo` only).
+#[tauri::command]
+async fn repo_generated(path: String, files: Vec<String>) -> Vec<String> {
+    repo_of(&path).map(|repo| repo::generated(&repo, &files)).unwrap_or_default()
 }
 
 #[tauri::command]
@@ -77,6 +155,9 @@ fn fit_width(width: f64, window: WebviewWindow, viewer: State<'_, Viewer>) {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Dirq's comments are sent, never written into the file: --annotate also holds for a patch on
+    // standard input, which is how CodeDeck hands one over
+    qiew_frame::launch::annotate_stdin();
     if qiew_frame::handle_cli(&INFO) {
         return;
     }
@@ -100,6 +181,10 @@ pub fn run() {
             initial_file,
             show_window,
             fit_width,
+            send_comment,
+            repo_blobs,
+            repo_blob,
+            repo_generated,
             qiew_frame::about::about_info,
             qiew_frame::about::open_about_link,
             qiew_frame::export::export_info,

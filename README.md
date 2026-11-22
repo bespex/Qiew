@@ -132,16 +132,27 @@ coding deck, leaves viewing files to such programs; this is how the two meet wit
   files, `--line` jumps to a place, `--geometry` puts the window beside CodeDeck's own, and `-` shows what
   CodeDeck has only in memory, such as a diff.
 
-Planned, in the frame so every viewer gets it at once:
+- **Permissions per call, never kept** – what a viewer may do beyond showing is given by the program that
+  starts it, on the command line of that call, for the document of that call. `--reuse` hands it over with
+  the document; a document opened by a drop or a link gets none.
+  - `--annotate` lets the user comment. Marq writes the comment into the Markdown file (`<!-- @ai: … -->`).
+    Dirq has nothing to write into: it sends each comment on a line to the program that started it.
+  - `CODEDECK_SOCKET=<path>` in the environment names where Dirq sends comments. By itself it allows nothing.
+  - `--repo <path>` lets Dirq read a Git repository (only `git cat-file` and `git check-attr`) for more lines
+    around a change and for files marked as generated.
+  - `--id <text>` names the document: the same text is a new version of the one shown before.
+- **The way back** – a comment from Dirq is one line of JSON on the Unix socket; nothing is read back:
+  `{"v":1,"action":"line_comment","source":"dirq","id":"<id>","file":"<path in the patch>","line":<new line>,"code":"<the line>","text":"<comment>","session":"<X-CodeDeck-Session>","doc":"<--id>"}`
+  and `{"v":1,"action":"line_comment_remove","source":"dirq","id":"<id>"}`. A comment on a removed line names
+  the next line of the new side and starts its `code` with `(gelöschte Zeile) `.
 
-- **A channel back, only when asked for** – CodeDeck starts a viewer with `CODEDECK_SOCKET=<path>` in its
-  environment. Only then the toolbar shows "Send to CodeDeck", which hands over what is selected (a passage,
-  an error, rows, a hunk) as one line of JSON:
-  `{"action":"add_to_context","source":"<app>","file":"<path>","selector":"<what>","content":"<text>"}`.
-  Without the variable there is no button and no connection.
+Options go after the file or `-`: a viewer ignores options it does not know, and an older one would take a
+value for the file if it came first.
 
-CodeDeck's part: start the viewers with these options, listen on the socket and set the variable, and prefer
-the be spex viewers in its list.
+CodeDeck's part: start the viewers with these options (`--annotate` for Dirq only for a patch of the working
+tree, whose line numbers are those of the files on disk), set the variable, take the comments as line comments
+of the next prompt, and prefer the be spex viewers in its list. With Dirq installed, CodeDeck's Changes show
+the files and Dirq shows their diffs (a double click on a file).
 
 ## Release
 

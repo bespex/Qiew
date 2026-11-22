@@ -1,6 +1,8 @@
 # Die Freigaben `--annotate`, `--repo` und `CODEDECK_SOCKET`: Spezifikation
 
-Stand 2026-11-21. Entwurf, **gebaut ist bisher nur `--id` (Abschnitt 3, Punkt 5).** Diese Datei ist die verbindliche Beschreibung der Parameter, mit
+Stand 2026-11-22. **Gebaut (Dirq 0.4.0, CodeDeck): `--id`, `--annotate`, `CODEDECK_SOCKET`, `--repo` und der Rückweg.**
+Im Rahmen: `launch::Grants` je Dokument (reist in `Handover`), `launch::annotate_stdin()` (die Ausnahme für Standardeingabe,
+nur Dirq ruft sie auf; Marq nicht). Diese Datei ist die verbindliche Beschreibung der Parameter, mit
 denen CodeDeck einem Betrachter etwas erlaubt, das er sonst nicht tut. Sie ist so geschrieben, dass eine Session ohne
 Vorwissen daraus bauen, testen und dokumentieren kann. Wo `apps/dirq/PLAN.md`, `apps/dirq/IDEEN.md` oder
 `docs/BEDIENKONZEPT.md` etwas anderes sagen, **gilt diese Datei**.
@@ -145,6 +147,8 @@ Dirq erwartet keine Antwort und liest nichts vom Socket.
 | `line` | Zeilennummer der **neuen** Seite. Für eine gelöschte Zeile die der nächsten Zeile der neuen Seite dahinter (am Dateiende: die letzte) |
 | `code` | Text dieser Zeile ohne Zeilenende, auf 200 Zeichen gekürzt. Bei einer gelöschten Zeile beginnt er mit `(gelöschte Zeile) ` und enthält den gelöschten Text |
 | `text` | Text des Kommentars, bis 10 000 Zeichen, Zeilenumbrüche erlaubt |
+| `session` | optional: `X-CodeDeck-Session` aus dem Kopf (Abschnitt 5) |
+| `doc` | optional, ergänzt 2026-11-22: die `--id` des Aufrufs. Daran erkennt CodeDeck, zu welchem Projekt und Repository der Patch gehört (ein CodeDeck-Prozess hat mehrere Projektfenster, `file` ist relativ zum Repository) |
 
 Hinweise für den Empfänger (CodeDeck): `file` muss im Projekt liegen (CodeDeck prüft); `code` dient dazu, die Zeile zu finden,
 wenn sich die Nummern verschoben haben (so nutzt es `Note.code`); CodeDeck kürzt `code` selbst auf 160 Zeichen
