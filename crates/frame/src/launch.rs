@@ -3,7 +3,7 @@
 //! viewer knowing about it.
 //!
 //! ```text
-//! <app> [<file> | -] [--line <n>] [--geometry <W>x<H>+<X>+<Y>] [--reuse] [--annotate] [--id <text>]
+//! <app> [<file> | -] [--line <n>] [--geometry <W>x<H>+<X>+<Y>] [--reuse] [--annotate] [--id <text>] [--repo <path>]
 //! ```
 //!
 //! - `-` reads the document from standard input (`git diff | dirq -`). It is
@@ -19,7 +19,14 @@
 //!   file of this call only: Marq may then write comments into it. It holds
 //!   per call and per file, not per window: a file handed over with `--reuse`
 //!   but without `--annotate` is shown read-only again, a file opened by a
-//!   link or a drop never is annotated. Standard input never is either.
+//!   link or a drop never is annotated. Standard input is not either, unless
+//!   the app says its comments never go into the file ([`annotate_stdin`]:
+//!   Dirq sends them to the program that started it).
+//! - `--repo <path>` lets an app look into this Git repository, read-only
+//!   (Dirq: more context around a change). Per call and file, like `--annotate`.
+//! - `CODEDECK_SOCKET` in the environment of the call names where comments are
+//!   sent. It allows nothing by itself; it travels with `--reuse` like the
+//!   options, since the running window may have been started by another program.
 //! - `--id <text>` names the document for the app: the same text means "a new
 //!   version of the document shown before", another one "a different document".
 //!   Standard input has no path to tell this by (each call keeps it under a new
@@ -29,10 +36,11 @@
 //!
 //! The frontend part is `@qiew/frame/launch`.
 
-use std::collections::HashSet;
+use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, OnceLock};
 use std::{env, fs, io, thread};
 
@@ -42,7 +50,7 @@ use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize};
 use crate::AppInfo;
 
 /// Options that are followed by a value (which is therefore not the file).
-const WITH_VALUE: &[&str] = &["--line", "--geometry", "--export-html", "--id"];
+const WITH_VALUE: &[&str] = &["--line", "--geometry", "--export-html", "--id", "--repo"];
 
 /// Where a window is to be: content size and position in physical pixels.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -87,6 +95,8 @@ pub struct Launch {
     pub annotate: bool,
     /// What the caller calls this document (see the module's `--id`).
     pub id: Option<String>,
+    /// The repository the app may read from (`--repo`).
+    pub repo: Option<String>,
 }
 
 impl Launch {
@@ -100,6 +110,7 @@ impl Launch {
                 "--reuse" => launch.reuse = true,
                 "--annotate" => launch.annotate = true,
                 "--id" => launch.id = args.next().filter(|v| !v.is_empty()),
+                "--repo" => launch.repo = args.next().filter(|v| !v.is_empty()),
                 "-" if launch.file.is_none() => launch.file = Some(arg),
                 flag if WITH_VALUE.contains(&flag) => drop(args.next()),
                 flag if flag.starts_with('-') => {}
@@ -118,28 +129,55 @@ static LINE: Mutex<Option<u32>> = Mutex::new(None);
 static DOC_ID: Mutex<Option<String>> = Mutex::new(None);
 /// The file standard input was written to, to be removed on exit.
 static STDIN_FILE: Mutex<Option<PathBuf>> = Mutex::new(None);
-/// The files the app may annotate: given with `--annotate`, by this call or a later one (`--reuse`).
-static ANNOTATE: Mutex<Option<HashSet<PathBuf>>> = Mutex::new(None);
+/// What the call that named a file allowed for it, by this call or a later one (`--reuse`).
+static GRANTS: Mutex<Option<HashMap<PathBuf, Grants>>> = Mutex::new(None);
+/// Set by an app whose comments never go into the file: standard input may be annotated then.
+static ANNOTATE_STDIN: AtomicBool = AtomicBool::new(false);
+
+/// What a call allows the app to do with the file it names (Qiew `docs/ANNOTATE.md`). Per call and
+/// file, never kept: a later call for the same file replaces it, a file opened by a link or a drop
+/// has none.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Grants {
+    /// `--annotate`: the user may comment on the document.
+    pub annotate: bool,
+    /// `CODEDECK_SOCKET` of the caller: where comments are sent. Allows nothing by itself.
+    pub codedeck_socket: Option<String>,
+    /// `--repo`: a Git repository the app may read from, absolute.
+    pub repo: Option<String>,
+}
+
+/// For an app whose comments are only sent, never written into the file (Dirq): `--annotate` then
+/// also holds for standard input, which is how a program hands it a document. To be called before
+/// [`crate::handle_cli`]. Marq writes into the file and does not call it.
+pub fn annotate_stdin() {
+    ANNOTATE_STDIN.store(true, Ordering::Relaxed);
+}
 
 /// The file as the app opens it: symbolic links resolved.
 fn real(file: &Path) -> PathBuf {
     fs::canonicalize(file).unwrap_or_else(|_| file.to_path_buf())
 }
 
-/// Allows or forbids annotating `file`, as the call that named it asked.
-fn set_annotate(file: &Path, allowed: bool) {
-    let mut files = ANNOTATE.lock().unwrap();
-    let files = files.get_or_insert_with(HashSet::new);
-    if allowed {
-        files.insert(real(file));
-    } else {
+/// What the call that named `file` allowed, replacing what an earlier call allowed.
+fn set_grants(file: &Path, grants: Grants) {
+    let mut files = GRANTS.lock().unwrap();
+    let files = files.get_or_insert_with(HashMap::new);
+    if grants == Grants::default() {
         files.remove(&real(file));
+    } else {
+        files.insert(real(file), grants);
     }
+}
+
+/// What the app may do with `file`: what the call that named it allowed, else nothing.
+pub fn grants(file: &Path) -> Grants {
+    GRANTS.lock().unwrap().as_ref().and_then(|files| files.get(&real(file)).cloned()).unwrap_or_default()
 }
 
 /// Whether the app may annotate `file`: only if the call that named it said `--annotate`.
 pub fn may_annotate(file: &Path) -> bool {
-    ANNOTATE.lock().unwrap().as_ref().is_some_and(|files| files.contains(&real(file)))
+    grants(file).annotate
 }
 
 /// The command line of this process.
@@ -159,6 +197,12 @@ struct Handover {
     /// Missing from older viewers: no id.
     #[serde(default)]
     id: Option<String>,
+    /// `CODEDECK_SOCKET` of the caller; missing from older viewers.
+    #[serde(default)]
+    codedeck_socket: Option<String>,
+    /// Missing from older viewers: no repository.
+    #[serde(default)]
+    repo: Option<String>,
 }
 
 /// The app's own directory for what lives only while it runs.
@@ -225,6 +269,16 @@ pub(crate) fn init(info: &AppInfo) -> bool {
         }
         None => {}
     }
+    // Another process, with another working directory, may have to find it.
+    if let Some(repo) = launch.repo.as_deref()
+        && let Ok(absolute) = std::path::absolute(repo)
+    {
+        launch.repo = Some(absolute.to_string_lossy().into_owned());
+    }
+    // Only with --annotate may an app comment; standard input only where the comments are never
+    // written into the file (annotate_stdin).
+    let annotate = launch.annotate && (from_stdin.is_none() || ANNOTATE_STDIN.load(Ordering::Relaxed));
+    let codedeck_socket = env::var("CODEDECK_SOCKET").ok().filter(|s| !s.is_empty());
 
     if launch.reuse
         && let Ok(mut running) = UnixStream::connect(socket(info))
@@ -235,8 +289,10 @@ pub(crate) fn init(info: &AppInfo) -> bool {
             geometry: launch
                 .placement
                 .map(|p| (p.size.map(|s| (s.width, s.height)), p.position.map(|p| (p.x, p.y)))),
-            annotate: launch.annotate && from_stdin.is_none(),
+            annotate,
             id: launch.id.clone(),
+            codedeck_socket: codedeck_socket.clone(),
+            repo: launch.repo.clone(),
         };
         if let Ok(message) = serde_json::to_string(&handover)
             && writeln!(running, "{message}").is_ok()
@@ -245,10 +301,8 @@ pub(crate) fn init(info: &AppInfo) -> bool {
         }
     }
 
-    if let Some(file) = launch.file.as_deref()
-        && from_stdin.is_none()
-    {
-        set_annotate(Path::new(file), launch.annotate);
+    if let Some(file) = launch.file.as_deref() {
+        set_grants(Path::new(file), Grants { annotate, codedeck_socket, repo: launch.repo.clone() });
     }
     *STDIN_FILE.lock().unwrap() = from_stdin;
     *DOC_ID.lock().unwrap() = launch.id.clone();
@@ -282,8 +336,12 @@ pub(crate) fn listen(app: &AppHandle, info: &AppInfo) {
             let Ok(handover) = serde_json::from_str::<Handover>(&message) else { continue };
             *LINE.lock().unwrap() = handover.line;
             *DOC_ID.lock().unwrap() = handover.id.clone();
+            // The grants of the call that sent it, not those of the call that started this window
             if let Some(file) = handover.file.as_deref() {
-                set_annotate(Path::new(file), handover.annotate);
+                set_grants(
+                    Path::new(file),
+                    Grants { annotate: handover.annotate, codedeck_socket: handover.codedeck_socket.clone(), repo: handover.repo.clone() },
+                );
             }
             if let Some(window) = app.get_webview_window("main") {
                 if let Some((size, position)) = handover.geometry {
@@ -356,6 +414,18 @@ mod tests {
         assert!(launch(&["--annotate", "a.md"]).annotate);
         assert!(!launch(&["a.md"]).annotate);
         assert_eq!(launch(&["--annotate", "a.md"]).file.as_deref(), Some("a.md"));
+        assert!(launch(&["-", "--reuse", "--annotate", "--annotate"]).annotate);
+        assert!(launch(&["--line", "3", "--annotate"]).annotate);
+    }
+
+    #[test]
+    fn the_repository_is_not_the_file() {
+        let l = launch(&["--repo", "/work/project", "-"]);
+        assert_eq!((l.repo.as_deref(), l.file.as_deref()), (Some("/work/project"), Some("-")));
+        let l = launch(&["-", "--reuse", "--annotate", "--repo", "/work/project", "--id", "x"]);
+        assert_eq!((l.repo.as_deref(), l.file.as_deref(), l.id.as_deref()), (Some("/work/project"), Some("-"), Some("x")));
+        assert_eq!(launch(&["a.patch", "--repo", ""]).repo, None);
+        assert_eq!(launch(&["a.patch"]).repo, None);
     }
 
     #[test]
@@ -369,11 +439,16 @@ mod tests {
         std::os::unix::fs::symlink(&file, &link).unwrap();
 
         assert!(!may_annotate(&file), "nothing is allowed without --annotate");
-        set_annotate(&link, true);
+        assert_eq!(grants(&file), Grants::default());
+        let given = Grants { annotate: true, codedeck_socket: Some("/run/codedeck/1.sock".into()), repo: Some("/work".into()) };
+        set_grants(&link, given.clone());
         assert!(may_annotate(&file) && may_annotate(&link), "a link stands for its target");
+        assert_eq!(grants(&file), given);
         assert!(!may_annotate(&dir.join("other.md")));
-        set_annotate(&file, false);
+        set_grants(&file, Grants { codedeck_socket: Some("/run/codedeck/2.sock".into()), ..Grants::default() });
         assert!(!may_annotate(&file), "a later call without --annotate takes it back");
+        assert_eq!(grants(&file).codedeck_socket.as_deref(), Some("/run/codedeck/2.sock"), "the last call's socket counts");
+        assert_eq!(grants(&file).repo, None, "and only its repository");
         let _ = fs::remove_dir_all(&dir);
     }
 
@@ -384,6 +459,27 @@ mod tests {
         assert_eq!(old.id, None, "an older viewer names no document");
         let new: Handover = serde_json::from_str(r#"{"file":"a.patch","line":null,"geometry":null,"id":"round 7"}"#).unwrap();
         assert_eq!(new.id.as_deref(), Some("round 7"));
+        assert_eq!((old.codedeck_socket, old.repo), (None, None));
+        let full = Handover {
+            file: Some("/run/dirq/stdin-1.patch".into()),
+            line: None,
+            geometry: None,
+            annotate: true,
+            id: Some("x".into()),
+            codedeck_socket: Some("/run/codedeck/1.sock".into()),
+            repo: Some("/work".into()),
+        };
+        let back: Handover = serde_json::from_str(&serde_json::to_string(&full).unwrap()).unwrap();
+        assert_eq!((back.annotate, back.codedeck_socket.as_deref(), back.repo.as_deref()), (true, Some("/run/codedeck/1.sock"), Some("/work")));
+        // An older viewer reads a newer message: unknown fields are ignored
+        #[derive(Deserialize)]
+        #[allow(dead_code)]
+        struct Older {
+            file: Option<String>,
+            line: Option<u32>,
+            geometry: Option<(Option<(u32, u32)>, Option<(i32, i32)>)>,
+        }
+        assert!(serde_json::from_str::<Older>(&serde_json::to_string(&full).unwrap()).is_ok());
     }
 
     #[test]
