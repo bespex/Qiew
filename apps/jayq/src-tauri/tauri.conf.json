@@ -71,7 +71,9 @@
         "desktopTemplate": "jayq.desktop"
       }
     },
-    "createUpdaterArtifacts": true
+    "createUpdaterArtifacts": true,
+    "shortDescription": "JSON viewer with jq filters, read-only – be spex",
+    "longDescription": "Jayq lays out JSON as a coloured, foldable tree and keeps every value exactly\nas it was written. To dig deeper, type a jq filter and see the result next to\nthe data – jq is built in. Nothing is evaluated except a filter you run.\n\nOne of the Qiew viewers of be spex – apps for the way you work:\nhttps://bespex.github.io"
   },
   "plugins": {
     "updater": {

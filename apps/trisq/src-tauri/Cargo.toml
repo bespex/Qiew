@@ -1,7 +1,7 @@
 [package]
 name = "trisq"
 version = "0.4.1"
-description = "TSX/JSX viewer, read-only – by be-spex"
+description = "TSX/JSX viewer, read-only – be spex"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true

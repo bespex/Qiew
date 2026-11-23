@@ -69,7 +69,9 @@
         "desktopTemplate": "dirq.desktop"
       }
     },
-    "createUpdaterArtifacts": true
+    "createUpdaterArtifacts": true,
+    "shortDescription": "Diff and patch viewer, read-only – be spex",
+    "longDescription": "Dirq shows a diff or patch file the way a diff tool would: old and new text\nside by side with the changed words marked, the files in a list on the left\nand the patch's subject, author and message in a header on top.\n\nOne of the Qiew viewers of be spex – apps for the way you work:\nhttps://bespex.github.io"
   },
   "plugins": {
     "updater": {

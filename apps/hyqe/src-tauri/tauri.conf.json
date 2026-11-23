@@ -69,7 +69,9 @@
         "desktopTemplate": "hyqe.desktop"
       }
     },
-    "createUpdaterArtifacts": true
+    "createUpdaterArtifacts": true,
+    "shortDescription": "HTML viewer, read-only – be spex",
+    "longDescription": "Hyqe shows an HTML file the way a browser would, with the styles, scripts and\nimages next to it, but starts in a blink and is nothing more than a viewer:\nfor a report, a dashboard or a prototype an AI assistant wrote. One click\nswitches to the coloured source.\n\nOne of the Qiew viewers of be spex – apps for the way you work:\nhttps://bespex.github.io"
   },
   "plugins": {
     "updater": {

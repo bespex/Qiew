@@ -83,7 +83,9 @@
         "desktopTemplate": "xaq.desktop"
       }
     },
-    "createUpdaterArtifacts": true
+    "createUpdaterArtifacts": true,
+    "shortDescription": "XML viewer with XSLT mapping, read-only – be spex",
+    "longDescription": "Xaq shows XML the way you wish it had been written: re-indented,\nsyntax-coloured and foldable, whatever the file looked like. Need a different\nshape? Run an XSLT on it in the mapping view. Nothing is rendered or executed\nexcept an XSLT you run yourself.\n\nOne of the Qiew viewers of be spex – apps for the way you work:\nhttps://bespex.github.io"
   },
   "plugins": {
     "updater": {

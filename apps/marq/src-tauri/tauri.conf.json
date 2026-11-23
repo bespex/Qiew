@@ -73,7 +73,9 @@
         "desktopTemplate": "marq.desktop"
       }
     },
-    "createUpdaterArtifacts": true
+    "createUpdaterArtifacts": true,
+    "shortDescription": "Markdown viewer – be spex",
+    "longDescription": "Marq turns a Markdown file into a clean, readable page: headings, tables,\ncode and images. Follow links to other documents and step back, like in a\nbrowser. It never writes to your files – unless started with --annotate, and\nthen only to add, tick or remove comment lines.\n\nOne of the Qiew viewers of be spex – apps for the way you work:\nhttps://bespex.github.io"
   },
   "plugins": {
     "updater": {

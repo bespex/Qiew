@@ -72,7 +72,9 @@
         }
       }
     },
-    "createUpdaterArtifacts": true
+    "createUpdaterArtifacts": true,
+    "shortDescription": "Mermaid diagram viewer, read-only – be spex",
+    "longDescription": "Maiqe draws the diagrams a Mermaid file describes: flowcharts, sequence,\nclass and state diagrams, timelines and the rest. Every diagram lies on a\ncard of its own with its own zoom; the text is one click away. It follows\nthe file while you or an assistant write it.\n\nOne of the Qiew viewers of be spex – apps for the way you work:\nhttps://bespex.github.io"
   },
   "plugins": {
     "updater": {

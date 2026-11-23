@@ -80,7 +80,9 @@
         }
       }
     },
-    "createUpdaterArtifacts": true
+    "createUpdaterArtifacts": true,
+    "shortDescription": "TSX/JSX viewer, read-only – be spex",
+    "longDescription": "Trisq shows what a .tsx or .jsx file renders: open a React component – a\nprototype an AI assistant wrote, a single screen, a chart – and see it live,\nwithout a project, Node.js or a dev server. It never writes to your files.\n\nOne of the Qiew viewers of be spex – apps for the way you work:\nhttps://bespex.github.io"
   },
   "plugins": {
     "updater": {

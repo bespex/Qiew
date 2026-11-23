@@ -77,7 +77,9 @@
         "desktopTemplate": "cusq.desktop"
       }
     },
-    "createUpdaterArtifacts": true
+    "createUpdaterArtifacts": true,
+    "shortDescription": "CSV viewer, read-only – be spex",
+    "longDescription": "Cusq lays a CSV or TSV file out as a table you can sort, filter and search,\nso whoever just wants to look at the data does not have to start a\nspreadsheet program. The window takes the width the table needs.\n\nOne of the Qiew viewers of be spex – apps for the way you work:\nhttps://bespex.github.io"
   },
   "plugins": {
     "updater": {
