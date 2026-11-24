@@ -2,7 +2,8 @@
  * Commenting, the same in every viewer (docs/BEDIENKONZEPT.md, 2; docs/ANNOTATE.md). Only with
  * --annotate: without it an app shows none of this.
  *
- * - the margin button: pointing at something that can take a comment shows a "+" beside it,
+ * - the margin button: pointing at something that can take a comment shows a "+" beside it (or
+ *   another symbol: Dirq's comments go elsewhere, so it shows a bubble with an arrow),
  * - the input card: a field under the place, Ctrl+Enter saves or sends, Esc cancels; optionally a
  *   row of chips to choose a kind (Marq: @ai, @me, @you),
  * - the note: one comment, a coloured stripe, its text, and on pointing the tools (tick, change,
@@ -23,9 +24,13 @@ const ICON = {
   edit: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16zM14 6l4 4"/></svg>`,
   remove: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M10 7V4h4v3M7 7l1 13h8l1-13"/></svg>`,
   bubble: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5h14a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1h-8l-4 3.5V16H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1Z"/></svg>`,
+  // Lucide message-square-share: a comment that goes somewhere else
+  share: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12v3a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h8"/><path d="M16 3h5v5"/><path d="m16 8 5-5"/></svg>`,
 };
 /** The speech bubble of comments, for counters and buttons. */
 export const BUBBLE_ICON = ICON.bubble;
+/** A bubble with an arrow: for a margin button whose comments are sent away, not kept in the document. */
+export const SHARE_ICON = ICON.share;
 
 // ---- the margin button ----------------------------------------------------------------------
 
@@ -42,14 +47,27 @@ export interface MarginButton {
 /**
  * The "+" in the margin. One per page; it lives on `layer` (page coordinates), so the app can
  * render the page anew without losing it.
+ *
+ * `icon` (SVG markup) replaces the "+". `title` is its tooltip; a function is asked anew each time
+ * the button is shown, for a text that depends on the state (Dirq: connected or not).
  */
-export function marginButton(opts: { layer: HTMLElement; title: string; onClick: (anchor: Element) => void }): MarginButton {
+export function marginButton(opts: {
+  layer: HTMLElement;
+  title: string | (() => string);
+  icon?: string;
+  onClick: (anchor: Element) => void;
+}): MarginButton {
   const el = document.createElement("button");
   el.type = "button";
-  el.className = "qa-plus";
-  el.textContent = "+";
-  el.title = `${opts.title} (${keyLabel("comment")})`;
-  el.setAttribute("aria-label", opts.title);
+  el.className = opts.icon ? "qa-plus qa-icon" : "qa-plus";
+  if (opts.icon) el.innerHTML = opts.icon;
+  else el.textContent = "+";
+  const setTitle = () => {
+    const title = typeof opts.title === "function" ? opts.title() : opts.title;
+    el.title = `${title} (${keyLabel("comment")})`;
+    el.setAttribute("aria-label", title);
+  };
+  setTitle();
   el.hidden = true;
   opts.layer.append(el);
   let anchor: Element | null = null;
@@ -62,6 +80,7 @@ export function marginButton(opts: { layer: HTMLElement; title: string; onClick:
     show(to, at) {
       clearTimeout(timer);
       anchor = to;
+      if (el.hidden) setTitle();
       el.style.top = `${at.top}px`;
       el.style.left = `${at.left}px`;
       el.hidden = false;
@@ -98,6 +117,8 @@ export interface InputCardOptions {
   placeholder: string;
   /** Beside the buttons: where the comment goes, and the keys. */
   hint: string;
+  /** A short line under the field, e.g. where the comment goes and where it does not. */
+  note?: string;
   /** The label of the button that saves or sends. */
   submit: string;
   /** Kinds to choose from (Marq's comment types); `chip` is chosen, `lockChip`: only it is offered. */
@@ -133,6 +154,7 @@ export function inputCard(o: InputCardOptions): InputCard {
     (chips ? `<span class="qa-chips" role="radiogroup" aria-label="Kind">${chips}</span>` : "") +
     `</div>` +
     `<textarea rows="3" placeholder="${esc(o.placeholder)}" aria-label="Comment"></textarea>` +
+    (o.note ? `<div class="qa-note-line">${esc(o.note)}</div>` : "") +
     `<div class="qa-error" hidden></div>` +
     `<div class="qa-actions"><span class="qa-keys">${esc(o.hint)}</span>` +
     `<button type="button" data-do="cancel">Cancel</button><button type="button" data-do="submit" class="qa-primary">${esc(o.submit)}</button></div>`;

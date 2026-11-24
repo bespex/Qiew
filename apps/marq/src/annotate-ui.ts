@@ -4,6 +4,7 @@
  * - the margin button: pointing at a block shows a "+" in the left margin; a click opens the input,
  * - the input card: below the block, a chip per comment type (the last one chosen is preset), a
  *   field for the text; Ctrl+Enter saves, Esc cancels,
+ * - "+" over a block: the input for it (Ctrl+Alt+M)
  * - Ctrl+Alt+M: the input for the block under the pointer (else the first one in view),
  * - F7 / Shift+F7: the next / previous comment, its card open (also without --annotate).
  *
@@ -94,6 +95,19 @@ function blockOf(el: Element | null): { ref: BlockRef; el: HTMLElement } | null 
     if (ref) return { ref, el: e.tagName === "CODE" ? (e.closest("pre") ?? e) : e };
   }
   return null;
+}
+
+/** The item of a list nearest to a height of the window (the list's padding and the gaps belong to no item). */
+function itemAt(list: HTMLElement, y: number): HTMLElement | null {
+  let best: HTMLElement | null = null;
+  let dist = Infinity;
+  for (const li of list.children) {
+    if (li.tagName !== "LI") continue;
+    const r = li.getBoundingClientRect();
+    const d = y < r.top ? r.top - y : y > r.bottom ? y - r.bottom : 0;
+    if (d < dist) [best, dist] = [li as HTMLElement, d];
+  }
+  return best;
 }
 
 /** The element that shows `ref` now. */
@@ -295,7 +309,9 @@ export function initAnnotate(doc: HTMLElement, current: () => Shown | null, onWr
       return;
     }
     if (t.closest(".notes, .note-card")) return hidePlus(); // the marks have their own card
-    const b = blockOf(t);
+    // In a list's own padding (where the bullets or numbers stand) the pointer is on the list, not
+    // on an item: take the item at that height, since a single item is what one comments on
+    const b = blockOf(t instanceof HTMLElement && (t.tagName === "UL" || t.tagName === "OL") ? (itemAt(t, e.clientY) ?? t) : t);
     if (b) {
       pointed = b;
       showPlus(b);
@@ -333,7 +349,15 @@ export function initAnnotate(doc: HTMLElement, current: () => Shown | null, onWr
   });
 
   document.addEventListener("keydown", (e) => {
-    if (e.key === "F7" && !e.ctrlKey && !e.altKey) {
+    const field = e.target instanceof HTMLElement && (e.target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName));
+    if (e.key === "+" && !e.ctrlKey && !e.altKey && !e.metaKey && !field && allowed() === "yes" && plusFor?.el.isConnected) {
+      // "+" over a block: the same as clicking the button
+      e.preventDefault();
+      e.stopPropagation();
+      openInput({ block: plusFor.ref, anchor: plusFor.el });
+      // The key is still going down: take the focus once more after it, so the cursor stays in the field
+      setTimeout(() => input?.el.querySelector("textarea")?.focus(), 0);
+    } else if (e.key === "F7" && !e.ctrlKey && !e.altKey) {
       e.preventDefault();
       jump(e.shiftKey);
     } else if (e.ctrlKey && e.altKey && e.key.toLowerCase() === "m" && allowed() === "yes") {

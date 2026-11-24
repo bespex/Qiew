@@ -261,6 +261,7 @@ tr.cm-row > td { padding: 4px 12px 6px 62px; background: var(--bg); white-space:
 .fl-comments { display: grid; gap: 4px; margin: 14px 4px 0 0; padding-top: 10px; border-top: 1px solid var(--border-soft); }
 .cm-title { font-weight: 600; font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
 .cm-hint { color: var(--muted); font-size: 12px; }
+.cm-hint svg { width: 12px; height: 12px; vertical-align: -2px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .cm-warn { padding: 4px 8px; border-radius: 6px; background: color-mix(in srgb, #bf8700 16%, var(--bg)); color: var(--fg); font-size: 12px; }
 #files a.cm-entry { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 6px; padding: 3px 6px; border-radius: 6px; border-left: 2px solid var(--accent); color: var(--fg); cursor: pointer; text-decoration: none; }
 #files a.cm-entry.unsent { border-left-color: #bf8700; }

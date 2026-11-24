@@ -105,10 +105,11 @@ question whether it should become the default viewer.
 A program that starts Dirq – CodeDeck – can let you comment on single lines of the patch. Each comment goes to
 that program, which hands it to the AI with your next prompt.
 
-1. **Without `--annotate` nothing changes.** No "+" at the lines, no cards, no button, no key. That is the normal case.
+1. **Without `--annotate` nothing changes.** Nothing in the margin, no cards, no button, no key. That is the normal case.
 2. **With it you can add, change and remove comments on single lines** – context, added and removed lines. Point at
-   a line and click the "+" in the margin, or press Ctrl+Alt+M (the line under the pointer, else the change the
-   last jump went to). Ctrl+Enter sends, Esc cancels. Pointing at a card shows a pen (change) and a bin (remove).
+   a line and click the speech bubble with an arrow in the margin, or press Ctrl+Alt+M (the line under the
+   pointer, else the change the last jump went to). Ctrl+Enter sends to CodeDeck, Esc cancels; the card then says
+   "sent to CodeDeck". Nothing goes into the patch. Pointing at a card shows a pen (change) and a bin (remove).
    That is all the option turns on: Dirq still writes nothing anywhere.
 3. **Dirq keeps no comments.** They live in the window while the document is shown; the receiving program keeps
    them. A new version of the same document (same `--id`, or a file that changed) keeps them at their line,

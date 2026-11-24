@@ -21,7 +21,7 @@ gestartet hat.“*
 
 Genauer:
 
-1. **Ohne `--annotate` ändert sich nichts.** Kein „+“ an den Zeilen, keine Kommentar-Karten, kein Knopf in der
+1. **Ohne `--annotate` ändert sich nichts.** Kein Randknopf an den Zeilen, keine Kommentar-Karten, kein Knopf in der
    Werkzeugleiste, kein Eintrag im Navigationsfeld, keine Taste. Dirq sieht und verhält sich genau wie heute. Das ist
    keine Einschränkung, sondern der Normalfall.
 2. **Mit `--annotate` darf der Nutzer an Zeilen des Diffs Kommentare anlegen, ändern und entfernen.** Diese Fähigkeit ist
@@ -48,10 +48,18 @@ Die Stellung auf der Kommandozeile ist gleichgültig. Mehrfach angegeben wirkt e
 
 - **Wo:** an einer einzelnen Zeile (Kontext, hinzugefügt oder gelöscht). Keine Bereiche; wer mehr meint, schreibt es in den
   Text („Zeilen 40–45“).
-- **Wie:** Beim Überfahren erscheint links im Rand ein „+“; Klick (oder Strg+Alt+M, Tasten siehe
-  `docs/BEDIENKONZEPT.md`) öffnet unter der Zeile eine Eingabekarte; Strg+Enter sendet, Esc bricht ab. Die fertige
-  Karte zeigt Streifen und Blase; beim Überfahren erscheinen Stift (bearbeiten) und Papierkorb (entfernen).
-- **Was geschieht:** Dirq sendet eine Nachricht (Abschnitt 4). Bearbeiten ist „entfernen und neu senden“.
+- **Wie:** Beim Überfahren erscheint links im Rand eine Sprechblase mit Pfeil (Lucide `message-square-share`),
+  **kein „+“**: Ein „+“ läse sich wie „Kommentar zum Patch hinzufügen“ (wie bei GitHub), doch im Patch wird nichts
+  gespeichert. Ihr Tooltip sagt, wohin der Kommentar geht: „Comment for the AI: goes to CodeDeck and out with your next
+  prompt. Not saved in the patch.“, ohne Verbindung zu CodeDeck (Abschnitt 2), dass er nur im Fenster bleibt. Klick
+  (oder Strg+Alt+M, Tasten siehe `docs/BEDIENKONZEPT.md`) öffnet unter der Zeile eine Eingabekarte; unter dem Textfeld
+  steht „Goes to CodeDeck, not into the patch.“, der Knopf heißt „Send to CodeDeck“ (ohne Verbindung: Hinweis „stays
+  only here in this window“, Knopf „Add“). Strg+Enter sendet, Esc bricht ab.
+- **Die fertige Karte** zeigt Streifen und Blase und, wo der Kommentar steht: „sending…“, danach ruhig „sent to
+  CodeDeck“; scheitert das Senden, „not sent“ mit „Send again“; ohne Verbindung „kept here“. Beim Überfahren erscheinen
+  Stift (bearbeiten) und Papierkorb (entfernen).
+- **Was geschieht:** Dirq sendet eine Nachricht (Abschnitt 4). Bearbeiten ist „entfernen und neu senden“. Im Patch
+  bleibt nichts; Dirq bewahrt den Kommentar nur auf, solange das Dokument offen ist.
 - **Marke `@ai`:** gibt es in Dirq nicht. Jeder Zeilenkommentar, den CodeDeck erhält, ist ohnehin für die KI.
 
 ---
@@ -72,7 +80,7 @@ des Programms beschrieben (Abschnitt 8).
 | `--annotate` | `CODEDECK_SOCKET` | Verhalten |
 |---|---|---|
 | nein | nein | wie heute |
-| nein | ja | wie heute: **kein** „+“. Die Variable allein erlaubt nichts; sie nennt nur den Weg, den spätere Aktionen nutzen können |
+| nein | ja | wie heute: **kein** Randknopf. Die Variable allein erlaubt nichts; sie nennt nur den Weg, den spätere Aktionen nutzen können |
 | ja | ja | Kommentieren; jeder Kommentar wird an den Socket gesendet |
 | ja | nein | Kommentieren; die Kommentare bleiben im Fenster; die Karten tragen den Hinweis „nicht gesendet“; „Als Liste kopieren“ (Markdown) in der Kommentar-Übersicht ist der Weg hinaus |
 
@@ -106,7 +114,7 @@ Daraus folgt:
    `<pid>.sock`). Startet CodeDeck neu, ist der alte Pfad tot, das Dirq-Fenster lebt aber weiter („it lives on when CodeDeck
    closes“, `apps.rs`). Deshalb gilt je Dokument der **zuletzt übergebene** Socket-Pfad.
 3. **Ein Dokument ohne `--annotate`, das in ein Fenster übergeben wird, das vorher kommentierbar war, ist nicht
-   kommentierbar.** Das Fenster schaltet beim Wechsel um: „+“, Karten und Knopf verschwinden.
+   kommentierbar.** Das Fenster schaltet beim Wechsel um: Randknopf, Karten und Knopf verschwinden.
 4. **Beim Wechsel zu einem anderen Dokument werden die Karten verworfen** (sie liegen weiter beim Empfänger). Beim
    Neuladen **desselben** Dokuments (Live-Reload einer Datei, oder CodeDeck schickt dieselbe Runde noch einmal) bleiben sie
    (Phase 4/5, Wiederfinden über den Zeilentext).
@@ -205,7 +213,7 @@ in CodeDeck. Das ist die **einzige** Information, die über den Kopf von CodeDec
 still, es merkt sich dann nur das Live-Review nicht über einen Reload hinaus. Auch `--id` steht **nach** `-`.)
 
 Geprüft am Code (`crates/frame/src/launch.rs`, `Launch::parse`): **Unbekannte Optionen werden still ignoriert** (jede Option mit
-`-` am Anfang). Ein Dirq ohne dieses Feature bricht bei `--annotate` also nicht ab, sondern zeigt **kein „+“**, ohne Hinweis.
+`-` am Anfang). Ein Dirq ohne dieses Feature bricht bei `--annotate` also nicht ab, sondern zeigt **keinen Randknopf**, ohne Hinweis.
 Der Nutzer würde nicht merken, dass etwas fehlt.
 
 Folgen:
@@ -232,7 +240,7 @@ sie sind Englisch, wie die READMEs und `--help` der Apps.
    Marq die Option anders belegt). Vorschlag für Dirq:
 
    ```
-   --annotate        let the user comment on single lines (a "+" in the margin); each comment is sent to the program
+   --annotate        let the user comment on single lines (a button in the margin); each comment is sent to the program
                      that started Dirq (CODEDECK_SOCKET), never written to the patch. Without it Dirq only views.
    --repo <path>     let Dirq look into this Git repository, read-only, for more context around a change
    ```
@@ -274,13 +282,13 @@ Von Hand (jeweils mit `example.patch` und einem Patch mit Kopf von CodeDeck):
 
 | Fall | Erwartung |
 |---|---|
-| Start ohne Parameter | Aussehen und Verhalten wie vor der Änderung, kein „+“ |
-| `--annotate` mit erreichbarem Socket (Gegenstelle: `socat`/Skript, das die Zeilen mitschreibt) | „+“ da; Kommentar erzeugt genau eine Zeile `line_comment`; Entfernen eine Zeile `line_comment_remove` |
+| Start ohne Parameter | Aussehen und Verhalten wie vor der Änderung, kein Randknopf |
+| `--annotate` mit erreichbarem Socket (Gegenstelle: `socat`/Skript, das die Zeilen mitschreibt) | Randknopf (Blase mit Pfeil) da; Kommentar erzeugt genau eine Zeile `line_comment` und zeigt danach „sent to CodeDeck“; Entfernen eine Zeile `line_comment_remove` |
 | `--annotate` ohne Socket | Karte mit „nicht gesendet“; „Als Liste kopieren“ liefert Markdown |
 | Socket verschwindet nach dem Start | Karte „nicht gesendet“, „Erneut senden“ geht nach neuem Socket |
-| `--reuse` von kommentierbar zu nicht kommentierbar | „+“, Karten, Knopf weg |
+| `--reuse` von kommentierbar zu nicht kommentierbar | Randknopf, Karten, Knopf weg |
 | `--reuse` mit demselben Dokument (Live) | Karten bleiben an ihrer Zeile; bei geänderter Zeile gedämpft |
 | `--reuse` mit anderem Dokument | Karten weg |
 | Kommentar an gelöschter Zeile | `line` = nächste neue Zeile, `code` beginnt mit `(gelöschte Zeile) ` |
 | `--help` | nennt beide Optionen |
-| Älteres Dirq mit `--annotate` | kein Absturz, kein „+“ (so wie in Abschnitt 7 beschrieben) |
+| Älteres Dirq mit `--annotate` | kein Absturz, kein Randknopf (so wie in Abschnitt 7 beschrieben) |

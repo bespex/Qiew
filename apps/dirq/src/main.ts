@@ -27,7 +27,7 @@ import { type Anchor, anchorOf, findAnchor, freshKey, updateFresh } from "./live
 import { type Comment, type Target, addMessage, fileOf, markdownList, newId, relocate, removeMessage, targetOf } from "./comments";
 import { type Gap, type Opened, blobLines, contextLines, gapsOf, hiddenIn, oldTotalOf, openMore, shownIn } from "./context";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
-import { BUBBLE_ICON, inputCard, marginButton, noteAction, noteHtml, sendComment as sendToCaller, type NoteView } from "@qiew/frame/annotate";
+import { BUBBLE_ICON, SHARE_ICON, inputCard, marginButton, noteAction, noteHtml, sendComment as sendToCaller, type NoteView } from "@qiew/frame/annotate";
 
 setApp("dirq");
 initToolbar();
@@ -622,7 +622,7 @@ function render() {
     repoGenerated.clear();
   }
   if (!current.annotate) {
-    // Handed over without --annotate: no "+", no cards, no button
+    // Handed over without --annotate: no margin button, no cards, no button
     comments = [];
     draft = null;
   } else if (reload) {
@@ -1118,7 +1118,7 @@ function exportHtml(): string {
 
 // ---- comments (only with --annotate) ----------------------------------------------------
 //
-// Docs: Qiew docs/ANNOTATE.md. Without --annotate none of this shows: no "+", no cards, no button,
+// Docs: Qiew docs/ANNOTATE.md. Without --annotate none of this shows: no margin button, no cards, no button,
 // no key. A comment is a message to the program that started Dirq (CODEDECK_SOCKET); Dirq writes
 // nothing and keeps comments only while the document is shown.
 
@@ -1148,7 +1148,7 @@ function showCommentTools() {
   cmBtn.title = comments.length
     ? `${plural(comments.length, "comment")}${unsent ? ` · ${unsent} not sent` : ""} – show the list`
     : current?.connected
-      ? "Comments: point at a line and click + (Ctrl+Alt+M)"
+      ? "Comments for the AI, sent to CodeDeck: point at a line and click the bubble with the arrow (Ctrl+Alt+M)"
       : "Comments stay in this window: nothing receives them (copy them as a list)";
   showCommentList();
 }
@@ -1185,7 +1185,7 @@ function showCommentList() {
   cmEl.innerHTML =
     `<div class="cm-title">Comments${comments.length ? ` · ${comments.length}` : ""}</div>` +
     (current?.connected ? "" : `<div class="cm-hint">Nothing receives them: they stay in this window. Copy them as a list.</div>`) +
-    (entries || `<div class="cm-hint">Point at a line and click <b>+</b>, or press Ctrl+Alt+M.</div>`) +
+    (entries || `<div class="cm-hint">Point at a line and click ${SHARE_ICON}, or press Ctrl+Alt+M.${current?.connected ? " Comments go to CodeDeck, not into the patch." : ""}</div>`) +
     `<div class="cm-actions">` +
     (comments.length ? `<button type="button" data-cm-do="copy">Copy as list</button>` : "") +
     (current?.connected && unsent.length ? `<button type="button" data-cm-do="resend-all" class="primary">Send ${unsent.length} again</button>` : "") +
@@ -1259,6 +1259,7 @@ function noteOf(c: Comment, where: boolean): string {
   const badges: NonNullable<NoteView["badges"]> = [];
   if (c.lost) badges.push({ text: "line changed" });
   if (c.state === "sending") badges.push({ text: "sending…" });
+  else if (c.state === "sent") badges.push({ text: "sent to CodeDeck", title: "CodeDeck has it; it goes to the AI with your next prompt" });
   else if (c.state === "unsent")
     badges.push(current?.connected ? { text: "not sent", warn: true, title: c.error, action: { act: "resend", label: "Send again" } } : { text: "kept here" });
   const view: NoteView = {
@@ -1280,9 +1281,10 @@ function draftCard(): HTMLElement {
   const card = inputCard({
     title: draft?.editing ? "Change comment" : "New comment",
     text: draft?.text,
-    placeholder: `${sends ? "A comment for the assistant" : "A comment"} …`,
-    hint: `${sends ? "Sent to the program that started Dirq." : "Nothing receives it: it stays here."} Ctrl+Enter, Esc cancels`,
-    submit: draft?.editing ? "Change" : sends ? "Send" : "Add",
+    placeholder: `${sends ? "A comment for the AI" : "A comment"} …`,
+    note: sends ? "Goes to CodeDeck, not into the patch." : "CodeDeck is not connected: it stays only here in this window, not in the patch.",
+    hint: `Ctrl+Enter ${sends ? "sends" : "adds"}, Esc cancels`,
+    submit: sends ? "Send to CodeDeck" : draft?.editing ? "Change" : "Add",
     onSubmit: (text) => submitDraft(text),
     onCancel: () => closeDraft(),
     onInput: (text) => draft && (draft.text = text),
@@ -1432,10 +1434,17 @@ function commentClick(e: Event): boolean {
   return true;
 }
 
-/** The "+" in the margin (the frame's): pointing at a line shows it; a click opens the card under the line. */
+/**
+ * The margin button (the frame's): pointing at a line shows it; a click opens the card under the line.
+ * Not a "+": the comment is not added to the patch but sent to CodeDeck, hence a bubble with an arrow.
+ */
 const plus = marginButton({
   layer: document.body,
-  title: "Comment on this line",
+  icon: SHARE_ICON,
+  title: () =>
+    current?.connected
+      ? "Comment for the AI: goes to CodeDeck and out with your next prompt. Not saved in the patch."
+      : "Comment for the AI: CodeDeck is not connected, so it stays only here in this window. Not saved in the patch.",
   onClick: (cell) => {
     const t = targetOfCell(cell);
     if (t) openDraft(t);

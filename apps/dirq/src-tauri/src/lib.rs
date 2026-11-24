@@ -49,7 +49,7 @@ static INFO: AppInfo = AppInfo {
         ),
         (
             "--annotate",
-            "let the user comment on single lines (a \"+\" in the margin); each comment is sent to the program that started Dirq (CODEDECK_SOCKET), never written to the patch. Without it Dirq only views.",
+            "let the user comment on single lines (a button in the margin); each comment is sent to the program that started Dirq (CODEDECK_SOCKET), never written to the patch. Without it Dirq only views.",
         ),
         (
             "--file <path>",
@@ -98,7 +98,7 @@ fn open_file(
     let given = grants(&path);
     Ok(Opened {
         doc,
-        // Only with --annotate: without it there is no "+" and nothing is sent
+        // Only with --annotate: without it there is no margin button and nothing is sent
         annotate: given.annotate,
         connected: given.annotate && given.codedeck_socket.is_some(),
         repo: given.repo.is_some_and(|r| Path::new(&r).is_dir()),

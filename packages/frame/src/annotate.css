@@ -15,6 +15,8 @@
   border-radius: 50%;
   cursor: pointer;
 }
+.qa-plus.qa-icon { display: grid; place-items: center; }
+.qa-plus.qa-icon svg { width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .qa-plus:hover,
 .qa-plus:focus-visible { color: var(--accent); border-color: var(--accent); }
 
@@ -76,6 +78,7 @@
   cursor: pointer;
 }
 .qa-actions button.qa-primary { color: var(--bg); background: var(--accent); border-color: var(--accent); }
+.qa-note-line { padding: 4px 0 0; color: var(--muted); font-size: 12px; }
 .qa-error { padding: 4px 0 0; color: #cf222e; font-size: 12px; white-space: pre-wrap; }
 
 /* ---- the note ---- */
