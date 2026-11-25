@@ -134,3 +134,18 @@ jobs:
               --notes "Not a release: holds <app>.json, the manifest each AppImage reads to find its newest version."
           fi
           gh release upload updater "dist-release/$APP.json" -R "$GITHUB_REPOSITORY" --clobber
+
+      # The APT repository (bespex/apt) rebuilds on a schedule, but GitHub runs scheduled workflows
+      # only every few hours: the release asks for a run at once. Needs the secret APT_DISPATCH_TOKEN
+      # (fine-grained token for bespex/apt, Actions: read and write); without it the step is skipped
+      # and the schedule picks the release up later.
+      - name: Update the APT repository
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ secrets.APT_DISPATCH_TOKEN }}
+        run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo "No APT_DISPATCH_TOKEN: the APT repository's schedule picks the release up later."
+            exit 0
+          fi
+          gh workflow run publish.yml -R bespex/apt
