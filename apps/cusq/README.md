@@ -59,7 +59,11 @@ Requirements: Ubuntu 24.04+, Linux Mint 22+ or Debian 13+ (x86_64).
 - **Filter** – a field under every heading: `text` (contains), `=exact`, `!not`, `>5` `<=10` (also for dates),
   `/regex/`. Combine filters across columns.
 - **Full text search** – Ctrl+F searches all cells, shows only matching rows and marks the hits.
-- **Large files** – only the rows in view are drawn.
+- **Column widths** – drag the right edge of a heading to change a column's width, double-click it to fit the
+  column to its content. Two buttons in the toolbar fit all columns to the window (narrow columns keep what
+  they need, the wide ones share the rest, also when the window changes) or make each as wide as its content.
+- **Wrap** – a button lets long cells break into lines; rows grow with them, everything aligned at the top.
+- **Large files** – only the rows in view are drawn, also while wrapping.
 - **Export** – the table as shown (filtered, sorted) as CSV, never over the file shown.
 
 Like every Qiew viewer: read-only, one file at a time, Esc closes the window, live reload, copy, About box, four colour schemes, and the

@@ -74,6 +74,31 @@ thead tr.filters input.bad { border-color: #d1242f; }
 thead tr.filters input::placeholder { color: var(--muted); opacity: .7; }
 thead th.n { z-index: 3; }
 
+/* The right edge of a column's name: drag for the width, double-click to fit the content. */
+.grip {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 7px;
+  height: 100%;
+  cursor: col-resize;
+}
+.grip:hover, body.resizing .grip:active { background: color-mix(in srgb, var(--accent) 35%, transparent); }
+body.resizing, body.resizing * { cursor: col-resize !important; user-select: none; }
+
+/* Wrapping cells: rows grow with their content, everything at the top (main.ts: LINE). */
+body.wrap tbody td {
+  height: 27px; /* at least, as without wrapping */
+  padding-top: 4px;
+  padding-bottom: 4px;
+  line-height: 18px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  text-overflow: clip;
+  vertical-align: top;
+}
+body.wrap tbody tr.spacer td { padding: 0; height: auto; }
+
 mark {
   background: color-mix(in srgb, #e3b341 55%, transparent);
   color: inherit;
@@ -81,5 +106,5 @@ mark {
 }
 
 #search-prev, #search-next { display: none; }
-#header-btn[aria-pressed="true"] { color: var(--accent); background: var(--surface); }
+#view-tools .tb-btn[aria-pressed="true"] { color: var(--accent); background: var(--surface); }
 .launch-line td { background: color-mix(in srgb, var(--accent) 26%, var(--bg)) !important; }
