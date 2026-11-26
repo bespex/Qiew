@@ -3,16 +3,51 @@
 export type Delimiter = "," | ";" | "\t" | "|";
 export const DELIMITER_NAMES: Record<Delimiter, string> = { ",": "comma", ";": "semicolon", "\t": "tab", "|": "pipe" };
 
-/** The delimiter a file most likely uses: the one that splits the first lines evenly. */
+/** A file as read: its delimiter, its records, and comment lines that stood before the table. */
+export interface Sheet {
+  delimiter: Delimiter;
+  rows: string[][];
+  comments: string[];
+}
+
+/**
+ * Reads a file: drops a byte order mark, sets aside leading comment lines (`# …`), detects the
+ * delimiter on what remains and parses it. A leading `#` line that splits like the table's first
+ * record (`#;Name;Value`) is data, not a comment.
+ */
+export function read(text: string, name: string): Sheet {
+  if (text.charCodeAt(0) === 0xfeff) text = text.slice(1);
+  const lines = text.split(/(?<=\n)/);
+  let lead = 0;
+  while (lead < lines.length && lines[lead].startsWith("#")) lead++;
+  const delimiter = detectDelimiter(lines.slice(lead).join(""), name);
+  const width = parse(lines.slice(lead).join("").slice(0, 20000), delimiter)[0]?.length ?? 0;
+  let comments = 0;
+  while (comments < lead && !(width > 1 && parse(lines[comments], delimiter)[0]?.length === width)) comments++;
+  return {
+    delimiter,
+    rows: parse(lines.slice(comments).join(""), delimiter),
+    comments: lines.slice(0, comments).map((l) => l.replace(/\r?\n$/, "")),
+  };
+}
+
+/**
+ * The delimiter a file most likely uses: the one that gives its first records the same number
+ * of fields, counted with the real parser so quotes and line breaks inside cells do not mislead.
+ */
 export function detectDelimiter(text: string, name: string): Delimiter {
   if (/\.tsv$/i.test(name)) return "\t";
-  const lines = text.slice(0, 20000).split(/\r?\n/).filter((l) => l !== "").slice(0, 8);
+  let sample = text.slice(0, 20000);
+  if (text.length > sample.length && sample.lastIndexOf("\n") > 0) sample = sample.slice(0, sample.lastIndexOf("\n"));
   let best: Delimiter = ",";
   let bestScore = 0;
   for (const d of [",", ";", "\t", "|"] as Delimiter[]) {
-    const counts = lines.map((l) => splitCount(l, d));
+    const counts = parse(sample, d)
+      .filter((r) => !(r.length === 1 && r[0] === ""))
+      .slice(0, 20)
+      .map((r) => r.length);
     const first = counts[0] ?? 0;
-    if (first === 0) continue;
+    if (first < 2) continue;
     const same = counts.filter((c) => c === first).length;
     const score = same * 1000 + first;
     if (score > bestScore) {
@@ -21,17 +56,6 @@ export function detectDelimiter(text: string, name: string): Delimiter {
     }
   }
   return best;
-}
-
-/** Number of delimiters in a line outside quotes. */
-function splitCount(line: string, d: string): number {
-  let n = 0;
-  let quoted = false;
-  for (const ch of line) {
-    if (ch === '"') quoted = !quoted;
-    else if (ch === d && !quoted) n++;
-  }
-  return n;
 }
 
 /** RFC 4180 plus what spreadsheets do: quotes, doubled quotes, line breaks inside quotes, BOM. */

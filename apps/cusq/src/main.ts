@@ -14,7 +14,7 @@ import { plural } from "@qiew/frame/fragment";
 import { onRevealRequest, revealLaunchLine } from "@qiew/frame/launch";
 import { openInitial } from "@qiew/frame/reveal";
 import { initToolbar, updateToolbar } from "@qiew/frame/toolbar";
-import { DELIMITER_NAMES, type Delimiter, type Kind, compare, dateFormat, detectDelimiter, filterOf, kindOf, numberFormat, parse, toCsv } from "./table";
+import { DELIMITER_NAMES, type Delimiter, type Kind, compare, dateFormat, filterOf, kindOf, numberFormat, read, toCsv } from "./table";
 
 setApp("cusq");
 initToolbar();
@@ -39,6 +39,7 @@ const searchBtn = document.getElementById("search-btn")!;
 
 let current: Doc | null = null;
 let delimiter: Delimiter = ",";
+let comments: string[] = []; // lines before the table that start with #
 let hasHeader = true;
 let names: string[] = [];
 let body: string[][] = [];
@@ -66,8 +67,10 @@ const letters = (i: number) => {
 function load(doc: Doc, keepState: boolean) {
   const before = { columns, hasHeader };
   const name = doc.path.split("/").pop() ?? "";
-  delimiter = detectDelimiter(doc.content, name);
-  const rows = parse(doc.content, delimiter);
+  const sheet = read(doc.content, name);
+  delimiter = sheet.delimiter;
+  comments = sheet.comments;
+  const rows = sheet.rows;
   columns = rows.reduce((m, r) => Math.max(m, r.length), 0);
   const padded = rows.map((r) => (r.length < columns ? [...r, ...Array<string>(columns - r.length).fill("")] : r));
   names = hasHeader && padded.length > 0 ? padded[0] : Array.from({ length: columns }, (_, i) => letters(i));
@@ -122,7 +125,8 @@ function applyView() {
 function stats() {
   if (!current) return;
   const rows = view.length === body.length ? plural(body.length, "Row") : `${new Intl.NumberFormat().format(view.length)} of ${plural(body.length, "Row")}`;
-  updateToolbar(current.content, `${rows} · ${plural(columns, "Column")} · ${DELIMITER_NAMES[delimiter]}`);
+  const note = comments.length > 0 ? ` · ${plural(comments.length, "comment line")}` : "";
+  updateToolbar(current.content, `${rows} · ${plural(columns, "Column")} · ${DELIMITER_NAMES[delimiter]}${note}`);
 }
 
 // ---- drawing -----------------------------------------------------------------------------
@@ -317,7 +321,7 @@ document.addEventListener("keydown", (e) => {
 // ---- opening -----------------------------------------------------------------------------
 
 function reveal(line: number) {
-  const record = line - 1 - (hasHeader ? 1 : 0);
+  const record = line - 1 - comments.length - (hasHeader ? 1 : 0);
   const at = view.indexOf(record);
   if (at < 0) return;
   marked = record;

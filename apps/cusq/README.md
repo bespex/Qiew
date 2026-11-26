@@ -47,8 +47,10 @@ Requirements: Ubuntu 24.04+, Linux Mint 22+ or Debian 13+ (x86_64).
 
 ## Features
 
-- **Reads what people write** – comma, semicolon, tab or pipe (detected), quotes, doubled quotes, line breaks
-  inside cells, byte order mark, UTF-8/UTF-16/Windows-1252.
+- **Reads what people write** – comma, semicolon, tab or pipe (detected over the first records, so quotes and
+  line breaks inside cells do not mislead it), quotes, doubled quotes, line breaks inside cells, byte order mark,
+  UTF-8/UTF-16/Windows-1252. Comment lines starting with `#` before the table are set aside and counted in the
+  status bar.
 - **Numbers and dates as such** – a column with only numbers is right-aligned, shows the same count of decimals
   in every row and, for quantities, thousands separators (postcodes, identifiers and numbers with leading zeros
   stay as written). Dates (`2026-11-14`, `14.11.2026`, with time) show in your language and sort by time.
