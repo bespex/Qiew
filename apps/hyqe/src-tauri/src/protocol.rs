@@ -19,40 +19,9 @@ use crate::watch::Watch;
 /// A page is allowed what a page in a browser is allowed, except to reach the app itself.
 const CSP: &str = "default-src * hyqe: data: blob: 'unsafe-inline' 'unsafe-eval'; object-src 'none'";
 
-/// Script injected into every HTML page: web links leave for the browser, and the
-/// app can ask the page to search itself.
-const BRIDGE: &str = r#"<script>(function(){
-function tell(m){try{parent.postMessage(m,"*")}catch(e){}}
-document.addEventListener("click",function(e){
-  var a=e.target&&e.target.closest&&e.target.closest("a[href]");
-  if(!a||e.defaultPrevented)return;
-  if(/^(https?|mailto):/i.test(a.href)){e.preventDefault();tell({hyqe:"open-url",url:a.href});}
-},true);
-var open=window.open;window.open=function(u){if(u&&/^https?:/i.test(String(u))){tell({hyqe:"open-url",url:String(u)});}return null;};
-window.addEventListener("message",function(e){
-  var d=e.data;if(!d||d.hyqe!=="find")return;
-  getSelection().removeAllRanges();
-  var ok=d.text?window.find(d.text,false,!!d.back,true,false,false,false):false;
-  tell({hyqe:"found",ok:ok});
-});
-document.addEventListener("keydown",function(e){
-  if(e.key==="F5"||(e.ctrlKey&&(e.key==="r"||e.key==="R"))){e.preventDefault();tell({hyqe:"reload"});}
-  else if(e.ctrlKey&&(e.key==="f"||e.key==="F")){e.preventDefault();tell({hyqe:"search"});}
-});
-function opaque(c){return c&&c!=="transparent"&&!/^rgba\(.*,\s*0\)$/.test(c);}
-function report(){
-  var bg=getComputedStyle(document.body).backgroundColor;
-  if(!opaque(bg))bg=getComputedStyle(document.documentElement).backgroundColor;
-  if(!opaque(bg)){
-    // No background of its own: the canvas, which a page that asks for dark gets dark.
-    var cs=getComputedStyle(document.documentElement).colorScheme||"";
-    var dark=/dark/.test(cs)&&(!/light/.test(cs)||matchMedia("(prefers-color-scheme: dark)").matches);
-    bg=dark?"rgb(18, 18, 18)":"rgb(255, 255, 255)";
-  }
-  tell({hyqe:"page",background:bg,title:document.title});
-}
-addEventListener("load",report);
-})();</script>"#;
+/// Script injected into every HTML page (bridge.js): web links leave for the browser, the app can
+/// ask the page to search itself, and it shows the app which element is pointed at for comments.
+const BRIDGE: &str = concat!("<script>", include_str!("bridge.js"), "</script>");
 
 const PATH: &AsciiSet = &NON_ALPHANUMERIC.remove(b'/').remove(b'-').remove(b'_').remove(b'.').remove(b'~');
 
@@ -60,12 +29,15 @@ const PATH: &AsciiSet = &NON_ALPHANUMERIC.remove(b'/').remove(b'-').remove(b'_')
 pub struct Preview {
     /// Files outside this directory are not handed out.
     root: Mutex<Option<PathBuf>>,
+    /// The file shown: only it gets the anchors for comments (annotate.rs).
+    entry: Mutex<Option<PathBuf>>,
     pub watch: Watch,
 }
 
 impl Preview {
-    pub fn open(&self, root: PathBuf) {
+    pub fn open(&self, root: PathBuf, entry: &Path) {
         *self.root.lock().unwrap() = Some(root);
+        *self.entry.lock().unwrap() = entry.canonicalize().ok();
     }
 }
 
@@ -117,7 +89,11 @@ pub fn handle(app: &AppHandle, request: &Request<Vec<u8>>) -> Response<Vec<u8>> 
     };
     let ext = found.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
     if matches!(ext.as_str(), "html" | "htm" | "xhtml") {
-        return respond(mime(&ext), inject(&qiew_frame::text::decode(&bytes)).into_bytes());
+        let text = qiew_frame::text::decode(&bytes);
+        // The file shown gets anchors: each start tag names its place in the file (annotate.rs)
+        let shown = preview.entry.lock().unwrap().as_deref() == Some(found.as_path());
+        let text = if shown && ext != "xhtml" { crate::annotate::anchor(&text) } else { text };
+        return respond(mime(&ext), inject(&text).into_bytes());
     }
     respond(mime(&ext), bytes)
 }

@@ -1,7 +1,7 @@
 # Qiew: ein Bedienkonzept für Kommentare, Navigation und Zusammenarbeit mit CodeDeck
 
 Stand 2026-11-22. Gebaut: die Tasten an einer Stelle (`packages/frame/src/keys.ts`), Sprungverlauf, Hilfe, Randleiste
-und Aufblitzen (Dirq), die Kommentare in Marq und Dirq mit Randknopf, Eingabekarte und Notiz aus dem Rahmen
+und Aufblitzen (Dirq), die Kommentare in Marq, Hyqe und Dirq mit Randknopf, Eingabekarte und Notiz aus dem Rahmen
 (`packages/frame/src/annotate.ts`). Das Navigationsfeld im Rahmen ist noch nicht gebaut; es steht wie alles Künftige in
 den `PLAN.md`-Dateien (Wurzel und `apps/<app>/`). Einzelheiten zu Marq stehen in `apps/marq/KOMMENTARE.md`, zu den
 Freigaben in `docs/ANNOTATE.md`.
@@ -15,7 +15,7 @@ Freigaben in `docs/ANNOTATE.md`.
 
    | Freigabe | Wer setzt sie | Was sie einschaltet |
    |---|---|---|
-   | `--annotate` | CodeDeck | Kommentieren (Marq: in die Datei schreiben; Dirq: an CodeDeck senden) |
+   | `--annotate` | CodeDeck | Kommentieren (Marq, Hyqe: in die Datei schreiben; Dirq: an CodeDeck senden) |
    | `CODEDECK_SOCKET=<pfad>` (Umgebung) | CodeDeck | der Rückweg: Knöpfe und Nachrichten für CodeDeck |
    | `--repo <pfad>` | CodeDeck | Dirq darf lesend im Repository nachsehen (Kontext, `.gitattributes`) |
 
@@ -34,9 +34,9 @@ Jeder Baustein wird einmal im Rahmen gebaut; die Apps liefern nur *wo* (Ankerpun
 
 | Baustein | Aussehen | Wer nutzt ihn |
 |---|---|---|
-| **Randknopf** | Beim Überfahren einer Zeile (Dirq) oder eines Blocks (Marq) erscheint links im Rand ein kleiner Knopf. In Marq ein „+“: der Kommentar kommt in die Datei. In Dirq eine Sprechblase mit Pfeil, der Tooltip sagt „geht an CodeDeck und mit dem nächsten Prompt an die KI, nicht in den Patch“ (ohne Verbindung: „bleibt nur hier im Fenster“). Das Symbol gibt die App dem Rahmen mit. Klick öffnet die Eingabe. Nur mit `--annotate`. | Marq, Dirq |
-| **Eingabekarte** | Kleines Feld direkt unter der Stelle. Strg+Enter speichert/sendet, Esc bricht ab. Mehrzeilig. Optional eine kurze Zeile unter dem Feld; Dirq sagt dort „Goes to CodeDeck, not into the patch.“, sein Knopf heißt „Send to CodeDeck“. In Marq wählt ein Chip vorn den **Typ** (`@ai`, `@me`, `@you`; zuletzt gewählter vorbelegt); in Dirq gibt es keinen Chip. | Marq, Dirq |
-| **Notizkarte** | Kommentierte Stelle: farbiger Streifen am Rand, kleine Blase mit Text, ein Klick klappt auf/zu; beim Überfahren Stift und Papierkorb, in Marq zusätzlich ein Haken (Abhaken, `@typ#erledigt`). Ohne `--annotate` zeigt Marq die Blase dezent und ohne diese Knöpfe. | Marq, Dirq |
+| **Randknopf** | Beim Überfahren einer Zeile (Dirq), eines Blocks (Marq) oder eines Elements der Seite (Hyqe; Alt+↑/↓ wählt den umgebenden Container) erscheint links im Rand ein kleiner Knopf. In Marq und Hyqe ein „+“: der Kommentar kommt in die Datei. In Dirq eine Sprechblase mit Pfeil, der Tooltip sagt „geht an CodeDeck und mit dem nächsten Prompt an die KI, nicht in den Patch“ (ohne Verbindung: „bleibt nur hier im Fenster“). Das Symbol gibt die App dem Rahmen mit. Klick öffnet die Eingabe; in Marq und Hyqe an einer Stelle, die schon Kommentare hat, zum Ändern des letzten offenen (einen weiteren gibt es mit Strg+Alt+M oder in der Notizkarte). Nur mit `--annotate`. | Marq, Hyqe, Dirq |
+| **Eingabekarte** | Kleines Feld direkt unter der Stelle. Strg+Enter speichert/sendet, Esc bricht ab. Mehrzeilig. Optional eine kurze Zeile unter dem Feld; Dirq sagt dort „Goes to CodeDeck, not into the patch.“, sein Knopf heißt „Send to CodeDeck“. In Marq und Hyqe wählt ein Chip vorn den **Typ** (`@ai`, `@me`, `@you`; zuletzt gewählter vorbelegt); in Dirq gibt es keinen Chip. | Marq, Hyqe, Dirq |
+| **Notizkarte** | Kommentierte Stelle: farbiger Streifen am Rand, kleine Blase mit Text, ein Klick klappt auf/zu; beim Überfahren Stift und Papierkorb, in Marq und Hyqe zusätzlich ein Haken (Abhaken, `@typ#erledigt`). Ohne `--annotate` zeigen Marq und Hyqe die Blase dezent und ohne diese Knöpfe. | Marq, Hyqe, Dirq |
 | **Navigationsfeld links** | Das Gliederungsfeld, das Marq schon hat (`outline.ts`, Strg+Umschalt+O, anheftbar), wird allgemein: in Marq „Gliederung“, in Dirq „Dateien“. Darin je Eintrag Zähler (Kommentare, Änderungen). Unten der Abschnitt „Kommentare“: in Dirq nur mit `--annotate`, in Marq immer (ohne den Parameter nur zum Springen und Ansehen). | Marq, Dirq |
 | **Randleiste** | Dünner Streifen rechts am Scrollbalken wie die Übersicht in IDEs: farbige Marken für Änderungen, Kommentare, „neu seit eben“. Klick springt. | Dirq zuerst, Marq (Kommentare) |
 | **Aufblitzen** | Nach einem Live-Reload leuchten Blöcke, die neu oder geändert sind, kurz auf und tragen eine Weile eine zarte Marke. Das ist ein kleines Interdiff, das ohne Konzept auskommt. | Dirq (Hunks), Marq (Blöcke) |
@@ -62,7 +62,7 @@ intuitiv bewertet wurde. Dazu (2026-11-22): **mit Alt bewegen die Pfeile senkrec
 | **Alt+→ / Alt+←** | nächste/vorige Datei | zurück/vor (gibt es) | Dirq: quer durch den Patch; Marq: Browser |
 | **Alt+Umschalt+← / →**, Maustasten zurück/vor | zurück/vor im Sprungverlauf | – | weil Alt+←/→ in Dirq die Dateien sind |
 | **Strg+Umschalt+O** | Dateien ein/aus | Gliederung ein/aus (gibt es) | Marq heute |
-| **Strg+Alt+M** | Kommentar an der Stelle unter dem Zeiger, sonst an der zuletzt angesprungenen | dasselbe | „Kommentar einfügen“ in Word und Docs |
+| **Strg+Alt+M** | Kommentar an der Stelle unter dem Zeiger, sonst an der zuletzt angesprungenen | dasselbe, immer ein neuer (anders als „+“, das einen vorhandenen ändert) | „Kommentar einfügen“ in Word und Docs |
 | **Strg+Enter / Esc** | senden / abbrechen | speichern / abbrechen | Strg+Enter heißt in Xaq und Jayq schon „ausführen“ |
 | **Strg+F, F3** | Suche | Suche | gibt es |
 | **?** | Hilfe | Hilfe | |
@@ -118,6 +118,12 @@ Siehe `apps/marq/KOMMENTARE.md` (Typen, Status, Format, Einfügestelle je Blocka
 Neu aus dem Gesamtbild:
 Eingabekarte, Notizkarte und Randknopf kommen aus dem Rahmen und sind **dieselben** wie in Dirq; F7 springt in Marq zum
 nächsten Kommentar; Aufblitzen zeigt nach einem Live-Reload, welche Blöcke die KI gerade geändert hat.
+
+### Hyqe im Einzelnen
+
+Siehe `apps/hyqe/KOMMENTARE.md`. Wie Marq, nur an Elementen einer HTML-Seite: Der Kommentar steht vor dem Start-Tag, das
+Ziel ist der Inhaltsblock unter dem Zeiger, Alt+↑ / Alt+↓ weitet auf den Container aus und zurück. Randknopf, Marken und
+Karten liegen auf einer Ebene über dem Frame der Seite.
 
 ## 5. Zusammenarbeit mit CodeDeck: Grundsätze
 

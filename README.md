@@ -112,7 +112,7 @@ Every viewer understands the same command line, so a script or another program c
 | `-` | read the document from standard input: `git diff \| dirq -`, `curl -s … \| jayq -` |
 | `--line <n>` | show that line of the file and mark it for a moment. Xaq and Jayq re-indent, so they find the line by what it says; Marq shows the block that holds it; Trisq has no lines to show. |
 | `--geometry` | place the window: content size and position in physical pixels; either part may be left out (`900x700`, `+40+60`) |
-| `--annotate` | Marq only: allow comments on the blocks of this file (`<!-- @ai: … -->`); Marq writes them into the file and changes nothing else. It holds for this call and this file: a file handed over again without it, or opened by a link, is read-only. |
+| `--annotate` | Marq and Hyqe: allow comments on the blocks of this file, or the elements of this page (`<!-- @ai: … -->`); they write them into the file and change nothing else (Dirq sends them instead, see below). It holds for this call and this file: a file handed over again without it, or opened by a link, is read-only. |
 | `--reuse` | hand the file to a window that was started with `--reuse` before, if one is open, instead of opening another; it comes to the front. Windows started without it are left alone. `<app> --reuse --line 40` shows a line of the file that window already has. |
 | `--register-default` | make the app the default for its files, without asking |
 | `--help`, `-h`, `-?` | print what the program is, how it is called and what it can do, then exit |
@@ -120,7 +120,7 @@ Every viewer understands the same command line, so a script or another program c
 
 Standard input is kept as a file of the app's own in the runtime directory (`$XDG_RUNTIME_DIR/<app>/`) and
 removed when the window is closed; the files a viewer shows are never written to – except comment lines in
-a file Marq was asked to annotate (`--annotate`).
+a file Marq or Hyqe was asked to annotate (`--annotate`).
 
 ## Working with CodeDeck
 
@@ -136,7 +136,8 @@ coding deck, leaves viewing files to such programs; this is how the two meet wit
 - **Permissions per call, never kept** – what a viewer may do beyond showing is given by the program that
   starts it, on the command line of that call, for the document of that call. `--reuse` hands it over with
   the document; a document opened by a drop or a link gets none.
-  - `--annotate` lets the user comment. Marq writes the comment into the Markdown file (`<!-- @ai: … -->`).
+  - `--annotate` lets the user comment. Marq writes the comment into the Markdown file (`<!-- @ai: … -->`),
+    Hyqe into the HTML file, before the element it is about.
     Dirq has nothing to write into: it sends each comment on a line to the program that started it.
   - `CODEDECK_SOCKET=<path>` in the environment names where Dirq sends comments. By itself it allows nothing.
   - `--repo <path>` lets Dirq read a Git repository (only `git cat-file` and `git check-attr`) for more lines

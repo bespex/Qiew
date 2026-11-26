@@ -988,6 +988,7 @@ dependencies = [
  "cssparser 0.38.0",
  "foldhash 0.2.0",
  "html5ever 0.40.1",
+ "memchr",
  "precomputed-hash",
  "selectors 0.41.0",
  "tendril",
@@ -1877,8 +1878,9 @@ dependencies = [
 
 [[package]]
 name = "hyqe"
-version = "0.2.1"
+version = "0.3.0"
 dependencies = [
+ "dom_query 0.29.0",
  "notify",
  "percent-encoding",
  "qiew-frame",
@@ -2601,7 +2603,7 @@ dependencies = [
 
 [[package]]
 name = "marq"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "qiew-frame",
  "serde",

@@ -1,7 +1,8 @@
 /*
  * Hyqe – an HTML page as a browser shows it, in a frame of its own origin (the backend's
  * protocol.rs serves the files next to it), and its source one click away. Toolbar, search,
- * colour schemes and the About box come from the frame.
+ * colour schemes and the About box come from the frame. With --annotate its elements take comments
+ * (annotate.ts).
  */
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
@@ -9,6 +10,7 @@ import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import "./styles.css";
+import { initAnnotate, onPageMessage, refreshAnnotate, resetAnnotate, type Comment } from "./annotate";
 import { setApp } from "@qiew/frame/app";
 import { plural } from "@qiew/frame/fragment";
 import { onRevealRequest, revealLaunchLine, revealTextLine } from "@qiew/frame/launch";
@@ -23,6 +25,11 @@ interface Doc {
   path: string;
   url: string; // address of the page, see the backend's protocol.rs
   content: string;
+  /** Opened with --annotate: comments may be written into the file. */
+  annotate: boolean;
+  /** The file can take comments (writable, UTF-8; only asked when `annotate`). */
+  writable: boolean;
+  comments: Comment[];
 }
 
 const EXT = /\.(html?|xhtml)$/i;
@@ -108,6 +115,7 @@ function applyMode() {
   closeSearch();
   setColours(pageBackground);
   if (showSource) renderSource();
+  refreshAnnotate();
 }
 
 function updateStats() {
@@ -117,6 +125,7 @@ function updateStats() {
 
 function reload() {
   if (!current) return;
+  resetAnnotate(); // the page says "ready" again once it is loaded
   page.src = `${current.url}?view=${++load}`;
 }
 
@@ -128,6 +137,7 @@ function showMessage(text: string, isError = false) {
   reloadBtn.hidden = true;
   pageBackground = null;
   setColours(null);
+  resetAnnotate();
   empty.hidden = false;
   empty.textContent = text;
   empty.classList.toggle("error", isError);
@@ -234,6 +244,7 @@ initPageSearch();
 window.addEventListener("message", (e) => {
   if (e.source !== page.contentWindow) return;
   const data = e.data as { hyqe?: string; url?: unknown; background?: unknown; ok?: unknown } | null;
+  if (data && onPageMessage(data)) return;
   if (data?.hyqe === "open-url" && typeof data.url === "string" && /^(https?|mailto):/i.test(data.url)) {
     openUrl(data.url);
   } else if (data?.hyqe === "reload") reload();
@@ -270,14 +281,28 @@ getCurrentWebview().onDragDropEvent((event) => {
 });
 
 // The page or one of the files it loaded changed.
-listen<string | null>("file-changed", ({ payload }) => {
+listen<string | null>("file-changed", async ({ payload }) => {
   if (!current) return;
+  // A comment we wrote: already shown, and the page keeps its state (annotate.ts)
+  if (payload !== null && payload === current.content) return;
   if (payload !== null) {
-    current.content = payload;
+    const doc = current;
+    doc.content = payload;
+    doc.comments = await invoke<Comment[]>("page_comments", { content: payload }).catch(() => []);
+    if (current !== doc) return;
     updateStats();
     if (showSource) renderSource();
   }
   reload();
+});
+
+// Commenting (with --annotate): what was written is taken over at once, without a reload.
+initAnnotate(page, () => current, (content, comments) => {
+  if (!current) return;
+  current.content = content;
+  current.comments = comments;
+  updateStats();
+  if (showSource) renderSource();
 });
 listen<string>("open-file", ({ payload }) => open(payload));
 onRevealRequest((line) => showSource && revealTextLine(source, line));

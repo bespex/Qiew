@@ -9,8 +9,9 @@ Was alle Betrachter teilen (`crates/frame`, `packages/frame`). Was eine einzelne
   Strg+↑/↓); Strg+Alt+M fühlt sich unter Linux ungewohnt an (Alternative Strg+Umschalt+M). Die Belegung steht an einer
   Stelle (`packages/frame/src/keys.ts`).
 - **Kommentare zu Projektdateien**: Heute nimmt CodeDeck Kommentare nur zu Patches an, die es Dirq gegeben hat
-  (Feld `doc`). Für Hyqe und Xaq (siehe deren `PLAN.md`) trüge die Nachricht stattdessen den Pfad der Datei, und
-  CodeDeck nähme Kommentare zu jeder Projektdatei an, die es selbst mit `--annotate` geöffnet hat.
+  (Feld `doc`). Für Xaq (siehe dessen `PLAN.md`) und für Elemente, die in Hyqe nur ein Skript erzeugt, trüge die
+  Nachricht stattdessen den Pfad der Datei, und CodeDeck nähme Kommentare zu jeder Projektdatei an, die es selbst mit
+  `--annotate` geöffnet hat. (Hyqe schreibt Kommentare sonst wie Marq in die Datei, `apps/hyqe/KOMMENTARE.md`.)
 - **Weitere Wege zurück zu CodeDeck**: eine Auswahl (Textstelle, Zeilen, Hunk, jq-Ergebnis) als Anhang mit Herkunft
   schicken („An CodeDeck“). Jede Aktion braucht ihre eigene Freigabe und eine Prüfung in CodeDecks Hub.
 - **Aussehen wie CodeDeck**: Farbschema und Sprache beim Start mitgeben.

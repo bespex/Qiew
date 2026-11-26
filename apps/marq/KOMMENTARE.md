@@ -210,11 +210,14 @@ eigenes `color-scheme` nach dem System setzt).
 
 - Randknopf: Beim Überfahren eines Blocks erscheint links im Rand ein „+“ (bei einem Block mit Kommentaren unter
   deren Punkten), dazu ein dünner Strich neben dem Block, damit klar ist, wem das „+“ gilt.
+- „+“ (Klick oder Taste) an einem Block **mit** Kommentaren legt keinen weiteren an, sondern öffnet den letzten
+  offenen zum Ändern (sind alle erledigt, den letzten; Nutzer, 2026-11-26). Einen weiteren gibt es mit Strg+Alt+M oder
+  „+ Kommentar“ in der Notizkarte. Der Tooltip des „+“ sagt, was es tut.
 - Eingabekarte unter dem Block: Chips `@ai`, `@me`, `@you` (zuletzt gewählter vorbelegt, bis zum Beenden),
   Strg+Enter speichert, Esc bricht ab; Fehler stehen in der Karte, der Text bleibt.
 - Notizkarte mit `--annotate`: je Kommentar Abhaken/Wieder öffnen, Bearbeiten (Typ bleibt), Löschen (erster Klick
   fragt, zweiter löscht), unten „+ Kommentar“. Bei schreibgeschützter Datei statt der Knöpfe ein Hinweis.
-- Tasten: Strg+Alt+M öffnet die Eingabe am Block unter dem Zeiger, sonst am ersten sichtbaren; F7 / Umschalt+F7
+- Tasten: Strg+Alt+M öffnet die Eingabe für einen **neuen** Kommentar am Block unter dem Zeiger, sonst am ersten sichtbaren; F7 / Umschalt+F7
   springt zum nächsten / vorigen Kommentar und öffnet seine Karte (auch ohne `--annotate`).
 - Eigener Reload: Nach dem Schreiben zeigt Marq den neuen Text sofort; ein `file-changed` mit genau diesem Text wird
   übersprungen. Eine offene Notizkarte geht am selben Block wieder auf.

@@ -1,12 +1,15 @@
 //! Hyqe – read-only viewer for HTML pages: the page as a browser shows it (scripts, styles and
 //! images next to it included), without a browser, and its source one click away.
 //!
-//! Zero-Touch-Policy: this backend never writes to the files it shows. They are only read; the
-//! watcher merely observes. As an AppImage, an accepted update replaces the image file.
+//! Zero-Touch-Policy: this backend never writes to the files it shows, with one exception: a file
+//! opened with `--annotate` takes comments (`<!-- @ai: … -->`, [`annotate`]), and only comment text
+//! changes. Otherwise files are only read; the watcher merely observes. As an AppImage, an
+//! accepted update replaces the image file.
 //!
 //! The page runs in a frame of its own origin (`hyqe://`, see [`protocol`]), apart from the
 //! window with the toolbar and from the commands below.
 
+mod annotate;
 mod protocol;
 mod watch;
 
@@ -39,7 +42,10 @@ static INFO: AppInfo = AppInfo {
         "Web links open in your browser; the page cannot reach the app or files outside its folder.",
     ],
     usage: &[],
-    options: &[],
+    options: &[(
+        "--annotate",
+        "allow comments on the elements of this file (<!-- @ai: … -->): Hyqe writes them into it, nothing else",
+    )],
 };
 
 #[derive(Clone, Serialize)]
@@ -49,6 +55,12 @@ struct Document {
     url: String,
     /// The source, for the source view and "Copy to Clipboard".
     content: String,
+    /// Started with `--annotate` for this file: comments may be added, ticked and removed.
+    annotate: bool,
+    /// The file can take comments (writable, UTF-8; only asked when `annotate`).
+    writable: bool,
+    /// The comments of known type in it.
+    comments: Vec<annotate::Comment>,
 }
 
 /// Reads a page, makes its project directory available to the frame and starts watching.
@@ -64,13 +76,21 @@ fn open_file(
         .map(|bytes| qiew_frame::text::decode(&bytes))
         .map_err(|e| format!("{}: {e}", path.display()))?;
 
-    preview.open(protocol::root_of(&path));
+    preview.open(protocol::root_of(&path), &path);
     preview.watch.start(&app, &path);
 
     if let Some(name) = path.file_name() {
         let _ = window.set_title(&format!("{} – Hyqe", name.to_string_lossy()));
     }
-    Ok(Document { url: protocol::fs_url(&path), path: path.to_string_lossy().into_owned(), content })
+    let annotate = qiew_frame::launch::may_annotate(&path);
+    Ok(Document {
+        url: protocol::fs_url(&path),
+        path: path.to_string_lossy().into_owned(),
+        annotate,
+        writable: annotate && annotate::writable(&path),
+        comments: annotate::comments(&content),
+        content,
+    })
 }
 
 #[tauri::command]
@@ -106,7 +126,12 @@ pub fn run() {
             qiew_frame::about::open_about_link,
             qiew_frame::export::export_info,
             qiew_frame::export::export_file,
-            qiew_frame::launch::take_line
+            qiew_frame::launch::take_line,
+            annotate::page_comments,
+            annotate::comment_add,
+            annotate::comment_edit,
+            annotate::comment_tick,
+            annotate::comment_remove
         ])
         .setup(|app| {
             qiew_frame::setup(app, &INFO);

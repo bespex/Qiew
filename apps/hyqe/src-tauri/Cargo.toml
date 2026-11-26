@@ -1,6 +1,6 @@
 [package]
 name = "hyqe"
-version = "0.2.1"
+version = "0.3.0"
 description = "HTML viewer, read-only – be spex"
 authors.workspace = true
 edition.workspace = true
@@ -27,3 +27,5 @@ serde_json = { workspace = true }
 notify = { workspace = true }
 serde = { workspace = true }
 percent-encoding = "2"
+# Parsing the page as a browser does, to check that a comment changes nothing (annotate.rs, H1)
+dom_query = "0.29"

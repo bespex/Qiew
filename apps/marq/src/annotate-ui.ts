@@ -1,11 +1,13 @@
 /*
  * Commenting in the page (only with --annotate, docs/BEDIENKONZEPT.md):
  *
- * - the margin button: pointing at a block shows a "+" in the left margin; a click opens the input,
+ * - the margin button: pointing at a block shows a "+" in the left margin; a click opens the input
+ *   (on a block that has comments: changing its last open one, else its last one),
  * - the input card: below the block, a chip per comment type (the last one chosen is preset), a
  *   field for the text; Ctrl+Enter saves, Esc cancels,
- * - "+" over a block: the input for it (Ctrl+Alt+M)
- * - Ctrl+Alt+M: the input for the block under the pointer (else the first one in view),
+ * - "+" over a block: the same as clicking the margin button,
+ * - Ctrl+Alt+M: a new comment on the block under the pointer (else the first one in view), also
+ *   where there are comments already,
  * - F7 / Shift+F7: the next / previous comment, its card open (also without --annotate).
  *
  * Button and card live outside the page, on a layer of their own: a live reload (the AI changing
@@ -144,8 +146,22 @@ function column() {
 const plus = marginButton({
   layer,
   title: "Add a comment",
-  onClick: () => plusFor && openInput({ block: plusFor.ref, anchor: plusFor.el }),
+  onClick: () => plusFor && plusAction(plusFor),
 });
+
+/** The comments a block has, from its marks (notes.ts). */
+function notesOf(el: HTMLElement): { type: CommentType; status: string | null; text: string; line: number }[] {
+  const marks = marksOf(el);
+  return marks ? JSON.parse(marks.dataset.notes ?? "[]") : [];
+}
+
+/** "+" (key or button): a block without comments gets a new one; on one with comments the last open one is changed, else the last one. */
+function plusAction(b: { ref: BlockRef; el: HTMLElement }) {
+  const notes = notesOf(b.el);
+  const n = [...notes].reverse().find((x) => !x.status) ?? notes[notes.length - 1];
+  if (n) openInput({ block: b.ref, anchor: b.el, line: n.line, type: n.type, text: n.text });
+  else openInput({ block: b.ref, anchor: b.el });
+}
 /** A thin line beside the block the "+" belongs to. */
 const bar = document.createElement("div");
 bar.className = "margin-bar";
@@ -161,6 +177,9 @@ function showPlus(b: { ref: BlockRef; el: HTMLElement }) {
   const marks = marksOf(b.el);
   const top = marks ? box(marks).bottom + 2 : box(b.el).top + 2;
   plus.show(b.el, { top, left: column().gutter + 12 });
+  const title = marks ? "Change the comment" : "Add a comment";
+  plus.el.title = marks ? `${title} (+) – a further one: Ctrl+Alt+M` : `${title} (+, Ctrl+Alt+M)`;
+  plus.el.setAttribute("aria-label", title);
   const b2 = box(b.el);
   bar.style.top = `${b2.top}px`;
   bar.style.height = `${b2.bottom - b2.top}px`;
@@ -354,7 +373,7 @@ export function initAnnotate(doc: HTMLElement, current: () => Shown | null, onWr
       // "+" over a block: the same as clicking the button
       e.preventDefault();
       e.stopPropagation();
-      openInput({ block: plusFor.ref, anchor: plusFor.el });
+      plusAction(plusFor);
       // The key is still going down: take the focus once more after it, so the cursor stays in the field
       setTimeout(() => input?.el.querySelector("textarea")?.focus(), 0);
     } else if (e.key === "F7" && !e.ctrlKey && !e.altKey) {

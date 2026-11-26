@@ -3,8 +3,8 @@
 //! ([`qiew_frame::launch::may_annotate`]).
 //!
 //! What a comment does to the text is decided by the frontend
-//! (`src/annotate.ts`, pure functions with tests). Here the file is written
-//! safely:
+//! (`src/annotate.ts`, pure functions with tests). The frame writes the file
+//! safely (`qiew_frame::write`):
 //!
 //! - only a file named with `--annotate` (Z7 in apps/marq/IDEEN.md),
 //! - only if it still is what the change was made from: the frontend reads
@@ -15,77 +15,20 @@
 //!   link and its target is written,
 //! - never a file marked read-only.
 
-use std::fs::{self, File, OpenOptions};
-use std::io::Write;
-use std::os::unix::fs::MetadataExt;
+use std::fs;
 use std::path::{Path, PathBuf};
 
 use qiew_frame::launch::may_annotate;
 
-/// Why nothing was written; the frontend shows it.
-fn why(path: &Path, what: impl std::fmt::Display) -> String {
-    format!("{}: {what}", path.display())
-}
-
-/// Whether this process may write the file itself: opening it for writing
-/// (without truncating) changes nothing, not even its time.
-fn may_write(path: &Path) -> bool {
-    OpenOptions::new().write(true).open(path).is_ok()
-}
-
-/// Whether the file can be written at all: the file itself, and the directory
-/// that is to take the temporary file.
+/// Whether the file can be written at all (the frame's `write::writable`).
 pub fn writable(path: &Path) -> bool {
-    let Ok(meta) = fs::metadata(path) else { return false };
-    let dir_ok = path.parent().is_some_and(|d| {
-        let probe = d.join(format!(".marq-probe-{}", std::process::id()));
-        let ok = OpenOptions::new().write(true).create_new(true).open(&probe).is_ok();
-        let _ = fs::remove_file(&probe);
-        ok
-    });
-    may_write(path) && (dir_ok || meta.nlink() > 1)
+    qiew_frame::write::writable(path)
 }
 
 /// Writes `content` to `path` if annotating it is `allowed` and the file still
-/// holds `base`. Returns the path written (the target of a link).
+/// holds `base` (the frame's `write::save`). Returns the path written.
 pub fn save(path: &Path, base: &str, content: &str, allowed: bool) -> Result<PathBuf, String> {
-    if !allowed {
-        return Err(why(path, "Marq schreibt nur in Dateien, die mit --annotate geöffnet wurden"));
-    }
-    let path = fs::canonicalize(path).map_err(|e| why(path, e))?;
-    let meta = fs::metadata(&path).map_err(|e| why(&path, e))?;
-    if !may_write(&path) {
-        return Err(why(&path, "die Datei ist schreibgeschützt"));
-    }
-    let now = fs::read_to_string(&path).map_err(|e| why(&path, e))?;
-    if now != base {
-        return Err(why(&path, "die Datei hat sich gerade geändert; nichts geschrieben"));
-    }
-
-    // A file with several names (hard links) keeps them only if written in place.
-    if meta.nlink() > 1 {
-        let mut file = OpenOptions::new().write(true).truncate(true).open(&path).map_err(|e| why(&path, e))?;
-        file.write_all(content.as_bytes()).and_then(|()| file.sync_all()).map_err(|e| why(&path, e))?;
-        return Ok(path);
-    }
-
-    let dir = path.parent().ok_or_else(|| why(&path, "kein Verzeichnis"))?;
-    let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-    let temp = dir.join(format!(".{name}.marq-{}.tmp", std::process::id()));
-    let written = (|| {
-        let mut file = OpenOptions::new().write(true).create_new(true).open(&temp)?;
-        file.write_all(content.as_bytes())?;
-        fs::set_permissions(&temp, meta.permissions())?;
-        file.sync_all()?;
-        fs::rename(&temp, &path)?;
-        // The rename itself is durable once the directory is.
-        File::open(dir).and_then(|d| d.sync_all())
-    })();
-    if let Err(e) = written {
-        let _ = fs::remove_file(&temp);
-        return Err(why(&path, e));
-    }
-    Ok(path)
+    qiew_frame::write::save(path, base.as_bytes(), content.as_bytes(), allowed, "Marq")
 }
 
 /// The file as it is now, to make a change from.

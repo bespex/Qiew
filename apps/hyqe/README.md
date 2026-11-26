@@ -59,8 +59,12 @@ Requirements: Ubuntu 24.04+, Linux Mint 22+ or Debian 13+ (x86_64).
 - **Colour of the page** – the toolbar takes the page's background colour, light or dark.
 - **Search in the page** – Ctrl+F finds text in the rendered page (the engine's own find), in the source with
   highlights and match count.
+- **Comments on the page** – started with `--annotate` (as [CodeDeck](https://bespex.github.io/codedeck/) does),
+  point at a paragraph, a button or a picture and press “+”: the comment goes into the file as
+  `<!-- @ai: … -->` before that element, for an AI assistant (`@ai`), yourself (`@me`) or others (`@you`). The page
+  looks exactly as before; nothing but the comment is written. Without `--annotate`, comments are only shown.
 
-Like every Qiew viewer: read-only, one file at a time, Esc closes the window, live reload, copy, About box, four colour schemes, and the
+Like every Qiew viewer: read-only (comments with `--annotate` aside), one file at a time, Esc closes the window, live reload, copy, About box, four colour schemes, and the
 question whether it should become the default viewer.
 
 ## Usage
@@ -69,6 +73,12 @@ question whether it should become the default viewer.
   on first start it asks whether it should become your default viewer for them – note that this replaces your
   browser for local HTML files, so answer with care (you are asked once, the answer is kept).
 - **Source:** the `</>` button or Ctrl+U. `--line <n>` opens the source at that line.
+- **Comments** (`hyqe page.html --annotate`): pointing at an element shows a line beside it and a “+”; “+” (key or
+  click) opens a field below it, Ctrl+Enter saves. On an element with comments “+” opens its last open one for
+  changing; Ctrl+Alt+M always adds a new one. Alt+↑ / Alt+↓ take the container around it instead (a card, a
+  section) and back. The dots beside an element show its comments; point at them for the text, click to tick off,
+  change or remove one. F7 / Shift+F7 jump from comment to comment. Only UTF-8 files take comments. Details:
+  [KOMMENTARE.md](KOMMENTARE.md).
 - **Not included:** printing, developer tools, downloads, forms that need a server.
 
 

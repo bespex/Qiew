@@ -37,3 +37,70 @@ body {
 .plain .d { color: var(--muted); }
 
 #source-btn[aria-pressed="true"] { color: var(--accent); background: var(--surface); }
+
+/* ---- Comments (annotate.ts): a layer over the frame; only its marks and cards take the pointer ---- */
+.hq-layer {
+  position: fixed;
+  z-index: 5;
+  overflow: hidden;
+  pointer-events: none;
+}
+.hq-layer[hidden] { display: none; }
+.hq-layer > * { position: absolute; pointer-events: auto; }
+.hq-layer > [hidden] { display: none; }
+.hq-bar {
+  width: 3px;
+  border-radius: 2px;
+  background: var(--accent);
+  opacity: 0.7;
+  pointer-events: none !important;
+}
+.hq-tag {
+  padding: 1px 6px;
+  font: 11px/16px var(--mono);
+  white-space: pre;
+  color: var(--bg);
+  background: var(--accent);
+  border-radius: 4px;
+  pointer-events: none !important;
+}
+.hq-marks {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 3px;
+  background: color-mix(in srgb, var(--bg) 80%, transparent);
+  border: 1px solid transparent;
+  border-radius: 9px;
+  cursor: pointer;
+}
+.hq-marks:hover, .hq-marks.active { border-color: var(--border); background: var(--bg); }
+.hq-dot { display: block; width: 10px; height: 10px; border-radius: 50%; background: var(--note); }
+.hq-dot.done { background: none; box-shadow: inset 0 0 0 2px var(--note); opacity: 0.6; }
+.hq-marks.orphan .hq-dot { border-radius: 2px; }
+.hq-card {
+  box-sizing: border-box;
+  width: min(420px, calc(100% - 16px));
+  max-height: 60%;
+  overflow: auto;
+  padding: 6px 0;
+  color: var(--fg);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 6px 22px rgb(0 0 0 / 22%), 0 1px 3px rgb(0 0 0 / 12%);
+}
+.hq-card .qa-note { margin: 2px 8px; }
+.hq-orphan, .hq-hint { padding: 2px 12px 4px; color: var(--muted); font: 12px var(--sans, system-ui); }
+.hq-foot { padding: 4px 12px 0; }
+.hq-foot button {
+  padding: 2px 8px;
+  font: 12px var(--sans, system-ui);
+  color: var(--accent);
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+}
+.hq-error { padding: 4px 12px 0; }
+.hq-input { margin: 0; }

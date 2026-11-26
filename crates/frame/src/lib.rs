@@ -27,6 +27,7 @@ pub mod default_handler;
 pub mod migrate;
 pub mod text;
 pub mod updates;
+pub mod write;
 mod viewer;
 pub mod window_layout;
 

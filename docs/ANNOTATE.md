@@ -9,8 +9,9 @@ Vorwissen daraus bauen, testen und dokumentieren kann. Wo `apps/dirq/PLAN.md` od
 `docs/BEDIENKONZEPT.md` etwas anderes sagen, **gilt diese Datei**.
 
 Geltungsbereich: hier steht, was die Parameter für **Dirq** bedeuten. Marq (eigene Session) kennt `--annotate` mit
-anderer Wirkung (es schreibt `<!-- @ai: … -->` in die Datei, siehe `apps/marq/KOMMENTARE.md`); der **Name und die
-Grundregeln** (Abschnitte 1 und 2) sind für beide gleich und dürfen nicht auseinanderlaufen.
+anderer Wirkung (es schreibt `<!-- @ai: … -->` in die Datei, siehe `apps/marq/KOMMENTARE.md`), Hyqe ebenso
+(`apps/hyqe/KOMMENTARE.md`); der **Name und die Grundregeln** (Abschnitte 1 und 2) sind für alle gleich und dürfen
+nicht auseinanderlaufen.
 
 ---
 

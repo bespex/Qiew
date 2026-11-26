@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <title>Quartalsbericht</title>
+  <style>
+    .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; }
+    .badge { display: inline-block; padding: 0 .5em; border-radius: 1em; background: #eee; }
+    pre { white-space: pre; }
+  </style>
+</head>
+<body>
+  <!-- a plain comment, not ours -->
+  <header>
+    <h1>Quartalsbericht Q3</h1>
+    <p class="lead">Umsatz, Kunden und <em>offene Punkte</em> im Überblick.</p>
+    <nav><a href="#zahlen">Zahlen</a> · <a href="#punkte">Punkte</a></nav>
+  </header>
+
+  <main>
+    <section id="zahlen">
+      <h2>Zahlen</h2>
+      <div class="cards">
+        <div class="card">
+          <h3>Umsatz</h3>
+          <p class="big">1,2 Mio €</p>
+          <span class="badge">+12 %</span>
+          <span class="badge">Ziel erreicht</span>
+        </div>
+        <div class="card">
+          <h3>Kunden</h3>
+          <p class="big">348</p>
+        </div>
+        <div class="card"><h3>Churn</h3><p class="big">2,1 %</p></div>
+      </div>
+      <table>
+        <caption>Monate</caption>
+        <thead>
+          <tr><th>Monat</th><th>Umsatz</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Juli</td>
+            <td>380 000 €</td>
+          </tr>
+          <tr><td>August</td><td>410 000 €</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="punkte">
+      <h2>Offene Punkte</h2>
+      <ol>
+        <li>Preise für <strong>2027</strong> festlegen</li>
+        <li>
+          <p>Neue Kundin anbinden.</p>
+          <ul>
+            <li>Vertrag</li>
+            <li>Schulung</li>
+          </ul>
+        </li>
+      </ol>
+      <blockquote>
+        <p>„Das Wachstum trägt sich selbst.“</p>
+      </blockquote>
+      <dl>
+        <dt>Risiko</dt>
+        <dd>Lieferzeiten</dd>
+      </dl>
+      <pre><code>umsatz = sum(monate)
+print(umsatz)</code></pre>
+      <figure>
+        <img src="chart.png" alt="Diagramm" width="300" height="120">
+        <figcaption>Umsatz je Monat</figcaption>
+      </figure>
+    </section>
+  </main>
+
+  <footer>Stand: 26.11.2026 <!-- @ai: footer kürzer --></footer>
+  <script>
+    // <div> in a script is no element; neither is <!-- this -->
+    document.querySelector(".lead").dataset.ok = "1";
+  </script>
+</body>
+</html>
