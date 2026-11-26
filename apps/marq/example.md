@@ -61,6 +61,16 @@ flowchart LR
   A[Client] --> B[Gateway] --> C[Auth] --> D[Router] --> E[Service A] --> F[Cache] --> G[Database] --> H[Queue] --> I[Worker] --> J[Storage] --> K[Notifier]
 ```
 
+## Formulas
+
+The balance $S(t)$ of a space, with $Q_{\text{in}}$ and $Q_{\text{out}}$ for what flows in and out – a price like $5 stays text:
+
+$$S(t) = \sum_{i \in \text{Entry}} Q_{\text{in}, i}(t) - \sum_{j \in \text{Exit}} Q_{\text{out}, j}(t)$$
+
+```math
+Q_{\text{smooth}}(t) = \alpha \cdot Q(t) + (1 - \alpha) \cdot Q_{\text{smooth}}(t - 1)
+```
+
 ---
 
 *The end.*

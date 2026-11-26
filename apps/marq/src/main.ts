@@ -19,6 +19,7 @@ import { initToolbar, setBackEnabled, updateToolbar } from "./toolbar";
 import { initNotes, installNotes, resetNotes, restoreNotes } from "./notes";
 import { afterRender, initAnnotate } from "./annotate-ui";
 import { relocateBlock } from "./annotate";
+import { drawMath, installMath, mathForExport } from "./math";
 
 setApp("marq");
 initToolbar();
@@ -71,6 +72,9 @@ md.renderer.rules.fence = (tokens, idx, options, env, self) => {
   const line = tok.attrGet("data-line");
   return `<div class="mermaid-block"${line ? ` data-line="${line}"` : ""}><pre class="mermaid-source"><code>${md.utils.escapeHtml(tok.content)}</code></pre></div>\n`;
 };
+
+// $…$, $$…$$ and ```math become formulas, drawn afterwards like the diagrams (see math.ts).
+installMath(md);
 
 const empty = document.getElementById("empty")!;
 const article = document.getElementById("doc")!;
@@ -147,6 +151,11 @@ function render(doc: Doc, keepScroll: boolean) {
   afterRender();
   restoreNotes((block) => relocateBlock(before, doc.content, block));
   drawDiagrams();
+  drawMath(article).then((any) => {
+    if (!any) return;
+    refreshSearch();
+    layoutWide();
+  }).catch((err) => console.error(err));
 }
 
 // ---- Mermaid diagrams ---------------------------------------------------------------------
@@ -221,6 +230,7 @@ function exportContent(): string {
   });
   // The diagrams' buttons and the comments' marks belong to the window, not to the page.
   copy.querySelectorAll(".mermaid-open, .notes, .note-card").forEach((el) => el.remove());
+  mathForExport(copy);
   // A <source> for another image of the same picture would point into the app; the <img> stands for it.
   copy.querySelectorAll("source[srcset]").forEach((source) => {
     if (!/^(https?:|data:)/i.test(source.getAttribute("srcset")!.trim())) source.remove();

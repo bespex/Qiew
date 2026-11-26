@@ -254,3 +254,10 @@ body.outline-open .outline { display: flex; }
   background: color-mix(in srgb, var(--accent) 45%, transparent);
   pointer-events: none;
 }
+
+/* Formulas (math.ts). Until KaTeX has drawn them, their source is shown. */
+.markdown-body .math-block { margin: 0 0 16px; overflow-x: auto; overflow-y: hidden; }
+.markdown-body .math-block:not(.drawn) { white-space: pre-wrap; font-family: var(--fontStack-monospace, monospace); }
+.markdown-body .math-block .katex-display { margin: 0; }
+.markdown-body .katex { font-size: 1.1em; }
+.markdown-body .katex-error { cursor: help; }

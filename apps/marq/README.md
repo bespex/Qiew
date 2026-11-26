@@ -59,6 +59,9 @@ Requirements: Ubuntu 24.04+, Linux Mint 22+ or Debian 13+ (x86_64).
   scheme; a diagram with an error shows Mermaid's message. Where [Maiqe](../maiqe/README.md) is installed, a
   button on each diagram opens it there, to zoom, move and save it as SVG. Mermaid is part of Marq, draws offline
   and is only loaded for documents that have diagrams.
+- **Formulas** – LaTeX between `$…$` in the text, and as a block between `$$…$$` or in a ```` ```math ````
+  block, is set with KaTeX; a formula with an error shows its source in red. "$5 and $10" stays text. The HTML
+  export carries formulas as MathML, which browsers show themselves.
 - **Outline** – the headings as a table of contents in a side panel (Ctrl+Shift+O); a click jumps to the
   section, the section being read is marked. Pinned, the panel makes room beside the page and is open at the next
   start; otherwise it floats over the page.
